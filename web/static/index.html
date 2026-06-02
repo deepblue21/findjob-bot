@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JOB_BOT // control panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#070a10; --bg-2:#0a0e14; --surface:#0e1420; --surface-2:#141c2a;
+    --border:#1d2636; --border-bright:#33425a;
+    --text:#e6edf6; --muted:#74829a; --muted-2:#4a5466;
+    --accent:#c6f035; --accent-dim:#8aa829; --accent-2:#4fe0c5;
+    --warn:#ffb454; --danger:#ff5c6c; --info:#4fc3f7; --save:#8ea4ff;
+    --shadow:0 10px 40px rgba(0,0,0,.55);
+    --glow-accent:0 0 24px rgba(198,240,53,.35);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:'IBM Plex Sans',sans-serif; font-size:14px; line-height:1.5;
+    position:relative; min-height:100vh; overflow-x:hidden;
+  }
+  /* animated background layers */
+  .bg-fx{position:fixed;inset:0;z-index:-2;pointer-events:none}
+  .bg-fx::before{
+    content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(60vw 50vh at 12% -8%, rgba(198,240,53,.10), transparent 60%),
+      radial-gradient(50vw 45vh at 92% 4%, rgba(79,224,197,.08), transparent 55%),
+      radial-gradient(55vw 55vh at 75% 110%, rgba(142,164,255,.07), transparent 60%);
+    animation:drift 22s ease-in-out infinite alternate;
+  }
+  .bg-fx::after{
+    content:"";position:absolute;inset:0;opacity:.5;
+    background-image:
+      linear-gradient(rgba(120,140,170,.045) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(120,140,170,.045) 1px,transparent 1px);
+    background-size:44px 44px;
+    mask-image:radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 80%);
+    -webkit-mask-image:radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 80%);
+  }
+  @keyframes drift{0%{transform:translate3d(0,0,0) scale(1)}100%{transform:translate3d(-2%,1.5%,0) scale(1.06)}}
+  .mono{font-family:'IBM Plex Mono',monospace}
+  a{color:inherit;text-decoration:none}
+  ::-webkit-scrollbar{width:11px;height:11px}
+  ::-webkit-scrollbar-track{background:var(--bg-2)}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:6px;border:2px solid var(--bg-2)}
+  ::-webkit-scrollbar-thumb:hover{background:var(--border-bright)}
+
+  /* ── Top bar ── */
+  header{
+    position:sticky;top:0;z-index:50;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:15px 26px; background:linear-gradient(180deg,rgba(10,14,20,.92),rgba(10,14,20,.72));
+    backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    border-bottom:1px solid var(--border); position:sticky;
+  }
+  header::after{
+    content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;
+    background:linear-gradient(90deg,transparent,rgba(198,240,53,.5),rgba(79,224,197,.4),transparent);
+  }
+  .logo{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:17px;letter-spacing:.5px;display:flex;align-items:center;gap:9px}
+  .logo .mark{
+    width:26px;height:26px;border-radius:7px;display:grid;place-items:center;font-size:14px;
+    background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#06231f;
+    box-shadow:var(--glow-accent)
+  }
+  .logo .blip{background:linear-gradient(90deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .logo .dim{color:var(--muted-2);font-weight:500}
+  .top-right{display:flex;align-items:center;gap:16px}
+  .scan-meta{font-size:11px;color:var(--muted);text-align:right;font-family:'IBM Plex Mono',monospace;line-height:1.4}
+  .scan-meta b{color:var(--text);font-weight:600}
+
+  button{cursor:pointer;font-family:inherit;border:none;transition:all .18s ease}
+  .btn-scan{
+    display:flex;align-items:center;gap:9px;position:relative;overflow:hidden;
+    background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#06231f;font-weight:700;font-size:13px;
+    padding:10px 18px;border-radius:9px;font-family:'IBM Plex Mono',monospace;letter-spacing:.3px;
+    box-shadow:0 4px 16px rgba(198,240,53,.18)
+  }
+  .btn-scan:hover{box-shadow:var(--glow-accent),0 6px 20px rgba(79,224,197,.25);transform:translateY(-1px)}
+  .btn-scan:active{transform:translateY(0)}
+  .btn-scan:disabled{background:var(--surface-2);color:var(--muted);cursor:not-allowed;box-shadow:none;transform:none}
+  .pulse-dot{width:7px;height:7px;border-radius:50%;background:#06231f}
+  .scanning .pulse-dot{background:#06231f;animation:pulse 1s infinite}
+  .scanning::before{
+    content:"";position:absolute;inset:0;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);
+    transform:translateX(-100%);animation:sweep 1.3s infinite
+  }
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  @keyframes sweep{100%{transform:translateX(100%)}}
+
+  /* ── Layout ── */
+  .wrap{max-width:1200px;margin:0 auto;padding:28px 22px 90px}
+
+  /* ── Stats ── */
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px}
+  .stat{
+    background:linear-gradient(165deg,var(--surface),var(--bg-2));
+    border:1px solid var(--border);border-radius:14px;
+    padding:18px 18px 16px;position:relative;overflow:hidden;
+    transition:transform .2s,border-color .2s,box-shadow .2s
+  }
+  .stat::before{
+    content:"";position:absolute;top:0;left:0;right:0;height:3px;
+    background:var(--c,var(--border-bright));opacity:.9;
+    box-shadow:0 0 14px var(--c,transparent)
+  }
+  .stat:hover{transform:translateY(-3px);border-color:var(--border-bright);box-shadow:var(--shadow)}
+  .stat .ico{
+    position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;
+    display:grid;place-items:center;opacity:.85;
+    background:color-mix(in srgb,var(--c,#fff) 12%,transparent);color:var(--c,var(--muted))
+  }
+  .stat .ico svg{width:16px;height:16px}
+  .stat .num{font-family:'IBM Plex Mono',monospace;font-size:30px;font-weight:700;line-height:1;letter-spacing:-.5px}
+  .stat .lbl{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:1.4px;margin-top:8px;font-weight:600}
+  .stat.total{--c:var(--text)} .stat.total .num{color:var(--text)}
+  .stat.new{--c:var(--accent)} .stat.new .num{background:linear-gradient(135deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .stat.saved{--c:var(--save)} .stat.saved .num{color:var(--save)}
+  .stat.applied{--c:var(--info)} .stat.applied .num{color:var(--info)}
+  .stat.dismissed{--c:var(--muted)} .stat.dismissed .num{color:var(--muted)}
+
+  /* ── Filter bar ── */
+  .filters{
+    display:flex;flex-wrap:wrap;align-items:center;gap:11px;margin-bottom:20px;
+    padding:15px 16px;background:linear-gradient(165deg,var(--surface),var(--bg-2));
+    border:1px solid var(--border);border-radius:14px;box-shadow:0 4px 20px rgba(0,0,0,.25)
+  }
+  .tabs{display:flex;gap:4px;background:var(--bg);padding:5px;border-radius:10px;border:1px solid var(--border)}
+  .tab{
+    padding:7px 14px;border-radius:7px;font-size:12px;font-weight:600;
+    background:transparent;color:var(--muted);font-family:'IBM Plex Mono',monospace;transition:.15s
+  }
+  .tab.active{background:linear-gradient(135deg,rgba(198,240,53,.16),rgba(79,224,197,.12));color:var(--accent);box-shadow:inset 0 0 0 1px rgba(198,240,53,.25)}
+  .tab:hover:not(.active){color:var(--text);background:var(--surface-2)}
+
+  .ctrl{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  select,input[type=text]{
+    background:var(--bg);border:1px solid var(--border);color:var(--text);
+    padding:8px 12px;border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:12px;outline:none;transition:.15s
+  }
+  select:hover,input[type=text]:hover{border-color:var(--border-bright)}
+  select:focus,input[type=text]:focus{border-color:var(--accent-dim);box-shadow:0 0 0 3px rgba(198,240,53,.1)}
+  input[type=text]{min-width:180px}
+  input[type=range]{accent-color:var(--accent);cursor:pointer}
+  .toggle{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;font-size:12px;color:var(--muted)}
+  .toggle input{display:none}
+  .toggle .sw{width:36px;height:19px;background:var(--border);border-radius:11px;position:relative;transition:.2s}
+  .toggle .sw::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:var(--muted);transition:.2s}
+  .toggle input:checked + .sw{background:linear-gradient(90deg,var(--accent-dim),var(--accent-2))}
+  .toggle input:checked + .sw::after{left:19px;background:#06231f}
+
+  .result-count{margin-left:auto;font-size:12px;color:var(--muted);font-family:'IBM Plex Mono',monospace;
+    padding:6px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px}
+
+  /* ── Job cards ── */
+  .jobs{display:flex;flex-direction:column;gap:11px}
+  .job{
+    display:grid;grid-template-columns:58px 1fr auto;gap:18px;align-items:center;
+    background:linear-gradient(165deg,var(--surface),var(--bg-2));
+    border:1px solid var(--border);border-radius:13px;
+    padding:15px 18px;position:relative;overflow:hidden;
+    transition:transform .16s,border-color .16s,box-shadow .16s;animation:fadeIn .35s ease both
+  }
+  .job::before{
+    content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+    background:var(--jc,transparent);opacity:0;transition:opacity .16s
+  }
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .job:hover{transform:translateY(-2px);border-color:var(--border-bright);box-shadow:var(--shadow)}
+  .job:hover::before{opacity:1}
+  .job.s-hi{--jc:var(--accent)} .job.s-mid{--jc:var(--warn)}
+  .job.dismissed{opacity:.42;filter:saturate(.6)}
+
+  .score{
+    font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:19px;
+    width:58px;height:58px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;border:1px solid var(--border);transition:.16s
+  }
+  .score small{font-size:7.5px;font-weight:600;color:var(--muted);letter-spacing:1.2px;margin-top:2px}
+  .score.s-hi{color:var(--accent);background:radial-gradient(circle at 50% 0%,rgba(198,240,53,.18),rgba(198,240,53,.05));border-color:rgba(198,240,53,.4);box-shadow:0 0 18px rgba(198,240,53,.18)}
+  .score.s-mid{color:var(--warn);background:radial-gradient(circle at 50% 0%,rgba(255,180,84,.14),rgba(255,180,84,.04));border-color:rgba(255,180,84,.3)}
+  .score.s-lo{color:var(--muted);background:var(--bg)}
+
+  .job-main{min-width:0}
+  .job-title{font-weight:600;font-size:15.5px;color:var(--text);margin-bottom:5px;transition:.15s;display:inline-block}
+  .job-title:hover{color:var(--accent)}
+  .job-sub{font-size:12.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .job-sub .co{color:var(--text);font-weight:600}
+  .badge{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;
+    padding:3px 8px;border-radius:6px;letter-spacing:.5px;text-transform:uppercase
+  }
+  .badge.src{background:var(--surface-2);color:var(--muted);border:1px solid var(--border)}
+  .badge.remote{background:rgba(198,240,53,.12);color:var(--accent);border:1px solid rgba(198,240,53,.2)}
+  .badge.salary{background:rgba(79,195,247,.1);color:var(--info);border:1px solid rgba(79,195,247,.18)}
+  .badge.type{background:rgba(142,164,255,.1);color:var(--save);border:1px solid rgba(142,164,255,.18)}
+  .badge.mode.uzaktan{background:rgba(198,240,53,.12);color:var(--accent);border:1px solid rgba(198,240,53,.2)}
+  .badge.mode.hibrit{background:rgba(79,224,197,.12);color:var(--accent-2);border:1px solid rgba(79,224,197,.2)}
+  .badge.mode.yerinde{background:rgba(255,180,84,.1);color:var(--warn);border:1px solid rgba(255,180,84,.18)}
+
+  /* ── Aktif kişi + kaynak şeridi ── */
+  .subbar{
+    max-width:1200px;margin:0 auto;padding:11px 22px 0;
+    display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:12px;color:var(--muted)
+  }
+  .subbar .who{font-family:'IBM Plex Mono',monospace;color:var(--text);font-weight:600}
+  .subbar .who b{background:linear-gradient(90deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .subbar .sep{width:1px;height:14px;background:var(--border-bright)}
+  .subbar .srcs{display:flex;flex-wrap:wrap;gap:6px}
+  .subbar .src-chip{
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;padding:3px 9px;border-radius:6px;
+    background:var(--surface-2);border:1px solid var(--border);color:var(--muted);display:flex;align-items:center;gap:5px
+  }
+  .subbar .src-chip::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent)}
+
+  .actions{display:flex;gap:7px;align-items:center}
+  .act{
+    width:36px;height:36px;border-radius:9px;background:var(--bg);border:1px solid var(--border);
+    color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:15px;transition:.15s
+  }
+  .act:hover{border-color:var(--border-bright);color:var(--text);transform:translateY(-1px)}
+  .act.save:hover{color:var(--save);border-color:var(--save);box-shadow:0 0 14px rgba(142,164,255,.25)}
+  .act.apply:hover{color:var(--info);border-color:var(--info);box-shadow:0 0 14px rgba(79,195,247,.25)}
+  .act.dismiss:hover{color:var(--danger);border-color:var(--danger);box-shadow:0 0 14px rgba(255,92,108,.25)}
+  .act.open:hover{color:var(--accent);border-color:var(--accent-dim);box-shadow:0 0 14px rgba(198,240,53,.25)}
+  .act.active-save{color:var(--save);border-color:var(--save);background:rgba(142,164,255,.1)}
+  .act.active-apply{color:var(--info);border-color:var(--info);background:rgba(79,195,247,.1)}
+
+  .empty{text-align:center;padding:80px 20px;color:var(--muted-2)}
+  .empty .big{font-size:46px;margin-bottom:14px;opacity:.4;background:linear-gradient(135deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .empty .mono{color:var(--muted);font-size:13px}
+
+  .toast{
+    position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(90px);
+    background:linear-gradient(165deg,var(--surface-2),var(--surface));border:1px solid var(--border-bright);color:var(--text);
+    padding:12px 22px;border-radius:11px;font-family:'IBM Plex Mono',monospace;font-size:13px;
+    box-shadow:var(--shadow);transition:transform .28s cubic-bezier(.2,.8,.2,1);z-index:100
+  }
+  .toast.show{transform:translateX(-50%) translateY(0)}
+  .toast.ok{border-color:var(--accent-dim);box-shadow:var(--shadow),0 0 20px rgba(198,240,53,.15)}
+  .toast .dot{color:var(--accent)}
+
+  /* ── Profil (isim) seçici ── */
+  .profile-switch{display:flex;gap:5px;background:var(--bg);padding:5px;border-radius:11px;border:1px solid var(--border)}
+  .pf-btn{
+    display:flex;flex-direction:column;align-items:flex-start;line-height:1.15;
+    padding:6px 13px;border-radius:8px;background:transparent;color:var(--muted);
+    font-family:'IBM Plex Mono',monospace;transition:.15s;border:1px solid transparent
+  }
+  .pf-btn .pf-name{font-size:12.5px;font-weight:700}
+  .pf-btn .pf-title{font-size:9.5px;opacity:.75;font-weight:500;letter-spacing:.2px}
+  .pf-btn:hover{color:var(--text);background:var(--surface-2)}
+  .pf-btn.active{
+    background:linear-gradient(135deg,rgba(198,240,53,.16),rgba(79,224,197,.12));
+    color:var(--accent);box-shadow:inset 0 0 0 1px rgba(198,240,53,.3)
+  }
+  .pf-btn.active .pf-title{color:var(--accent-2)}
+
+  .act.draft:hover{color:var(--accent-2);border-color:var(--accent-2);box-shadow:0 0 14px rgba(79,224,197,.25)}
+
+  /* ── Başvuru / ön yazı modalı ── */
+  .modal-bg{
+    position:fixed;inset:0;z-index:200;display:none;align-items:flex-start;justify-content:center;
+    background:rgba(4,7,12,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    padding:40px 18px;overflow-y:auto
+  }
+  .modal-bg.show{display:flex}
+  .modal{
+    width:100%;max-width:720px;background:linear-gradient(165deg,var(--surface),var(--bg-2));
+    border:1px solid var(--border-bright);border-radius:16px;box-shadow:var(--shadow);
+    animation:fadeIn .25s ease both;overflow:hidden
+  }
+  .modal-head{
+    display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+    padding:18px 22px;border-bottom:1px solid var(--border);
+    background:linear-gradient(90deg,rgba(198,240,53,.06),rgba(79,224,197,.04))
+  }
+  .modal-head h3{font-size:16px;font-weight:700;margin-bottom:3px}
+  .modal-head .sub{font-size:12px;color:var(--muted);font-family:'IBM Plex Mono',monospace}
+  .modal-x{width:34px;height:34px;border-radius:9px;background:var(--bg);border:1px solid var(--border);color:var(--muted);font-size:16px;flex:none}
+  .modal-x:hover{color:var(--danger);border-color:var(--danger)}
+  .modal-body{padding:18px 22px;max-height:62vh;overflow-y:auto}
+  .sec-label{display:flex;align-items:center;justify-content:space-between;margin:4px 0 7px}
+  .sec-label span{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);font-weight:700}
+  .copy-btn{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:var(--accent);
+    background:rgba(198,240,53,.1);border:1px solid rgba(198,240,53,.25);padding:5px 11px;border-radius:7px
+  }
+  .copy-btn:hover{background:rgba(198,240,53,.18)}
+  .cover-box{
+    width:100%;background:var(--bg);border:1px solid var(--border);border-radius:10px;
+    padding:14px;color:var(--text);font-size:13px;line-height:1.6;white-space:pre-wrap;
+    font-family:'IBM Plex Sans',sans-serif;resize:vertical;min-height:200px;outline:none
+  }
+  .cover-box:focus{border-color:var(--accent-dim)}
+  .qa{margin-top:16px}
+  .qa-item{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-bottom:9px}
+  .qa-q{font-size:12px;font-weight:700;color:var(--accent-2);margin-bottom:4px}
+  .qa-a{font-size:13px;color:var(--text);line-height:1.55}
+  .hl{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px}
+  .hl span{font-family:'IBM Plex Mono',monospace;font-size:11px;background:var(--surface-2);border:1px solid var(--border);color:var(--muted);padding:4px 9px;border-radius:6px}
+  .modal-foot{display:flex;gap:10px;align-items:center;padding:15px 22px;border-top:1px solid var(--border)}
+  .modal-foot .note{font-size:11px;color:var(--muted-2);flex:1;line-height:1.4}
+  .btn-go{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:12.5px;padding:9px 15px;border-radius:9px;background:var(--surface-2);border:1px solid var(--border-bright);color:var(--text)}
+  .btn-go:hover{border-color:var(--accent-dim);color:var(--accent)}
+  .btn-applied{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:12.5px;padding:9px 15px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#06231f}
+  .btn-applied:hover{box-shadow:var(--glow-accent)}
+
+  @media(max-width:760px){
+    .profile-switch{order:-1;width:100%}
+    .pf-btn{flex:1}
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .job{grid-template-columns:48px 1fr;grid-template-areas:"score main" "actions actions"}
+    .score{grid-area:score}.job-main{grid-area:main}.actions{grid-area:actions;justify-content:flex-end}
+    .result-count{width:100%;margin:4px 0 0;text-align:center}
+  }
+</style>
+</head>
+<body>
+<div class="bg-fx"></div>
+<header>
+  <div class="logo">
+    <span class="mark">⚡</span>
+    JOB<span class="blip">_</span>BOT <span class="dim">// control panel</span>
+  </div>
+  <div class="top-right">
+    <div class="profile-switch" id="profileSwitch"></div>
+    <div class="scan-meta" id="scanMeta">son tarama: —</div>
+    <button class="btn-scan" id="scanBtn" onclick="triggerScan()">
+      <span class="pulse-dot"></span><span id="scanLabel">SCAN NOW</span>
+    </button>
+  </div>
+</header>
+
+<div class="subbar" id="subbar"></div>
+
+<div class="wrap">
+  <!-- Stats -->
+  <div class="stats" id="stats">
+    <div class="stat total">
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></div>
+      <div class="num" id="st-total">0</div><div class="lbl">toplam</div>
+    </div>
+    <div class="stat new">
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l2.5 2.5M16.5 16.5L19 19M19 5l-2.5 2.5M7.5 16.5L5 19"/></svg></div>
+      <div class="num" id="st-new">0</div><div class="lbl">yeni</div>
+    </div>
+    <div class="stat saved">
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.5 1.6 6.7L12 17l-6.2 3.6 1.6-6.7L2.2 8.9l6.9-.6z"/></svg></div>
+      <div class="num" id="st-saved">0</div><div class="lbl">kaydedildi</div>
+    </div>
+    <div class="stat applied">
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>
+      <div class="num" id="st-applied">0</div><div class="lbl">başvuruldu</div>
+    </div>
+    <div class="stat dismissed">
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></div>
+      <div class="num" id="st-dismissed">0</div><div class="lbl">elendi</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters">
+    <div class="tabs" id="statusTabs">
+      <button class="tab active" data-status="all">TÜMÜ</button>
+      <button class="tab" data-status="new">YENİ</button>
+      <button class="tab" data-status="saved">★ KUYRUK</button>
+      <button class="tab" data-status="applied">BAŞVURULDU</button>
+      <button class="tab" data-status="dismissed">ELENEN</button>
+    </div>
+    <div class="ctrl">
+      <span>kaynak</span>
+      <select id="sourceSel" onchange="loadJobs()"><option value="all">hepsi</option></select>
+    </div>
+    <div class="ctrl">
+      <span>min skor <b class="mono" id="scoreVal" style="color:var(--accent)">0</b></span>
+      <input type="range" id="scoreRange" min="0" max="12" step="0.5" value="0" oninput="onScore()">
+    </div>
+    <label class="toggle">
+      <input type="checkbox" id="remoteChk"><span class="sw"></span>
+      <span>sadece remote</span>
+    </label>
+    <div class="ctrl">
+      <select id="sortSel" onchange="loadJobs()">
+        <option value="score">skora göre</option>
+        <option value="date">tarihe göre</option>
+        <option value="company">şirkete göre</option>
+      </select>
+    </div>
+    <input type="text" id="searchBox" placeholder="başlık / şirket ara…" oninput="debouncedLoad()">
+    <div class="result-count" id="resultCount">—</div>
+  </div>
+
+  <!-- Jobs -->
+  <div class="jobs" id="jobsList"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Başvuru / ön yazı modalı -->
+<div class="modal-bg" id="appModal" onclick="if(event.target===this)closeApp()">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3 id="appTitle">—</h3>
+        <div class="sub" id="appCompany">—</div>
+      </div>
+      <button class="modal-x" onclick="closeApp()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="hl" id="appHl"></div>
+      <div class="sec-label">
+        <span>Ön yazı (düzenleyebilirsin)</span>
+        <button class="copy-btn" onclick="copyCover()">⧉ Kopyala</button>
+      </div>
+      <textarea class="cover-box" id="appCover"></textarea>
+      <div class="qa" id="appQa"></div>
+    </div>
+    <div class="modal-foot">
+      <div class="note" id="appNote"></div>
+      <a class="btn-go" id="appGo" href="#" target="_blank">↗ İlana git</a>
+      <button class="btn-applied" id="appApplied">✓ Başvurdum</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "";
+let state = { profile:"", status:"all", source:"all", min_score:0, remote_only:false, search:"", sort:"score" };
+let scanTimer = null;
+let PROFILES = [];
+
+// ── helpers ──
+function scoreClass(s){ if(s>=6) return "s-hi"; if(s>=3) return "s-mid"; return "s-lo"; }
+function esc(s){ return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function fmtSalary(j){
+  if(j.salary_min && j.salary_max) return `${Math.round(j.salary_min/1000)}–${Math.round(j.salary_max/1000)}K ${j.currency||''}`;
+  if(j.salary_min) return `${Math.round(j.salary_min/1000)}K+ ${j.currency||''}`;
+  return null;
+}
+function toast(msg, ok=true){
+  const t=document.getElementById("toast");
+  t.innerHTML=`<span class="dot">▸</span> ${msg}`;
+  t.className="toast show "+(ok?"ok":"");
+  setTimeout(()=>t.className="toast",2200);
+}
+function animateNum(el, to){
+  to = +to || 0;
+  const from = +el.textContent || 0;
+  if(from===to){ el.textContent=to; return; }
+  const steps=14; let i=0;
+  clearInterval(el._t);
+  el._t=setInterval(()=>{ i++; el.textContent=Math.round(from+(to-from)*i/steps);
+    if(i>=steps){ el.textContent=to; clearInterval(el._t); } }, 22);
+}
+function workMode(j){
+  const loc=(j.location||'').toLowerCase();
+  if(j.is_remote || loc.includes('uzaktan') || loc.includes('remote')) return 'uzaktan';
+  if(loc.includes('hibrit') || loc.includes('hybrid')) return 'hibrit';
+  return 'yerinde';
+}
+
+// ── profil (isim) seçici ──
+async function loadProfiles(){
+  const r = await (await fetch(API+"/api/profiles")).json();
+  PROFILES = r.profiles || [];
+  if(PROFILES.length && !state.profile) state.profile = PROFILES[0].key;
+  const box = document.getElementById("profileSwitch");
+  box.innerHTML = PROFILES.map(p=>`
+    <button class="pf-btn ${p.key===state.profile?'active':''}" data-key="${p.key}" onclick="switchProfile('${p.key}')">
+      <span class="pf-name">${esc(p.name)}</span>
+      <span class="pf-title">${esc(p.title)}</span>
+    </button>`).join('');
+  renderSubbar();
+}
+function renderSubbar(){
+  const p = PROFILES.find(x=>x.key===state.profile) || {};
+  const srcs = ["Kariyer.net","Indeed","Google","LinkedIn"];
+  document.getElementById("subbar").innerHTML =
+    `<span class="who">Aktif: <b>${esc(p.name||'—')}</b></span>`+
+    `<span class="sep"></span><span>${esc(p.title||'')}</span>`+
+    `<span class="sep"></span><span class="srcs">`+
+    srcs.map(s=>`<span class="src-chip">${s}</span>`).join('')+`</span>`;
+}
+async function switchProfile(key){
+  if(key===state.profile) return;
+  state.profile = key;
+  document.querySelectorAll(".pf-btn").forEach(b=>b.classList.toggle("active", b.dataset.key===key));
+  renderSubbar();
+  await loadStats(); await loadJobs();
+}
+
+// ── stats ──
+async function loadStats(){
+  const s = await (await fetch(API+"/api/stats?profile="+encodeURIComponent(state.profile))).json();
+  animateNum(document.getElementById("st-total"), s.total);
+  animateNum(document.getElementById("st-new"), s.new);
+  animateNum(document.getElementById("st-saved"), s.saved);
+  animateNum(document.getElementById("st-applied"), s.applied);
+  animateNum(document.getElementById("st-dismissed"), s.dismissed);
+
+  // kaynak dropdown
+  const sel=document.getElementById("sourceSel");
+  const cur=sel.value;
+  sel.innerHTML='<option value="all">hepsi</option>';
+  Object.entries(s.by_source||{}).forEach(([src,c])=>{
+    const o=document.createElement("option"); o.value=src; o.textContent=`${src} (${c})`; sel.appendChild(o);
+  });
+  sel.value=cur;
+
+  // son tarama
+  if(s.last_scan){
+    const ls=s.last_scan;
+    const when = ls.finished_at || ls.started_at || "—";
+    document.getElementById("scanMeta").innerHTML =
+      `son tarama: <b>${when.split(' ')[1]||when}</b> · ${ls.new_count||0} yeni · ${ls.matched_count||0} bildirim`;
+  }
+}
+
+// ── jobs ──
+async function loadJobs(){
+  const p = new URLSearchParams(state);
+  const data = await (await fetch(API+"/api/jobs?"+p)).json();
+  const list = document.getElementById("jobsList");
+  document.getElementById("resultCount").textContent = `${data.count} ilan`;
+
+  if(!data.jobs.length){
+    list.innerHTML=`<div class="empty"><div class="big">∅</div>
+      <div class="mono">eşleşen ilan yok</div>
+      <div class="mono" style="margin-top:6px;opacity:.6">SCAN NOW ile tarama başlat veya filtreleri gevşet</div></div>`;
+    return;
+  }
+
+  list.innerHTML = data.jobs.map(j=>{
+    const sal=fmtSalary(j);
+    const sc=scoreClass(j.score);
+    const mode=workMode(j);
+    const badges=[
+      `<span class="badge src">${esc(j.source)}</span>`,
+      `<span class="badge mode ${mode}">${mode}</span>`,
+      j.job_type?`<span class="badge type">${esc(j.job_type)}</span>`:'',
+      sal?`<span class="badge salary">${esc(sal)}</span>`:'',
+    ].filter(Boolean).join('');
+    return `<div class="job ${sc} ${j.status==='dismissed'?'dismissed':''}" data-h="${j.url_hash}">
+      <div class="score ${sc}">${j.score.toFixed(1)}<small>SCORE</small></div>
+      <div class="job-main">
+        <a href="${esc(j.url)}" target="_blank" class="job-title">${esc(j.title)||'(başlıksız)'}</a>
+        <div class="job-sub">
+          <span class="co">${esc(j.company)||'—'}</span><span>·</span>
+          <span>${esc(j.location)||'—'}</span>
+          ${badges}
+        </div>
+      </div>
+      <div class="actions">
+        <button class="act draft" title="Ön yazı / başvuru hazırla" onclick="openApp('${j.url_hash}')">📝</button>
+        <button class="act save ${j.status==='saved'?'active-save':''}" title="Kuyruğa ekle (★)" onclick="setStatus('${j.url_hash}','saved')">★</button>
+        <button class="act apply ${j.status==='applied'?'active-apply':''}" title="Başvurdum" onclick="setStatus('${j.url_hash}','applied')">✓</button>
+        <button class="act dismiss" title="Ele" onclick="setStatus('${j.url_hash}','dismissed')">✕</button>
+        <a class="act open" title="Aç" href="${esc(j.url)}" target="_blank">↗</a>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function setStatus(hash, status){
+  await fetch(`${API}/api/jobs/${hash}/status?status=${status}&profile=${encodeURIComponent(state.profile)}`,{method:"POST"});
+  const labels={saved:"kuyruğa eklendi",applied:"başvuruldu",dismissed:"elendi",new:"yeni"};
+  toast(`İlan → ${labels[status]}`);
+  await loadStats(); await loadJobs();
+}
+
+// ── başvuru / ön yazı modalı ──
+let CUR_APP = null;
+async function openApp(hash){
+  toast("Taslak hazırlanıyor…");
+  const r = await fetch(`${API}/api/jobs/${hash}/application?profile=${encodeURIComponent(state.profile)}`);
+  if(!r.ok){ toast("Taslak üretilemedi", false); return; }
+  const a = await r.json(); CUR_APP = a;
+  document.getElementById("appTitle").textContent = a.title||"İlan";
+  document.getElementById("appCompany").textContent = a.company||"";
+  document.getElementById("appCover").value = a.cover_letter||"";
+  document.getElementById("appHl").innerHTML = (a.highlights||[]).map(h=>`<span>${esc(h)}</span>`).join('');
+  document.getElementById("appQa").innerHTML = (a.answers||[]).map(qa=>`
+    <div class="qa-item"><div class="qa-q">${esc(qa.q)}</div><div class="qa-a">${esc(qa.a)}</div></div>`).join('');
+  document.getElementById("appNote").textContent = a.note||"";
+  const go=document.getElementById("appGo"); go.href = a.url||"#";
+  const applied=document.getElementById("appApplied");
+  applied.onclick = async()=>{ await setStatus(hash,'applied'); closeApp(); };
+  document.getElementById("appModal").classList.add("show");
+}
+function closeApp(){ document.getElementById("appModal").classList.remove("show"); }
+function copyCover(){
+  const txt=document.getElementById("appCover").value;
+  navigator.clipboard.writeText(txt).then(()=>toast("Ön yazı kopyalandı ✓"))
+    .catch(()=>toast("Kopyalanamadı", false));
+}
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeApp(); });
+
+// ── scan ──
+async function triggerScan(){
+  const r = await (await fetch(API+"/api/scan?profile="+encodeURIComponent(state.profile),{method:"POST"})).json();
+  if(!r.started){ toast(r.reason||"tarama çalışıyor", false); return; }
+  const who = (PROFILES.find(p=>p.key===state.profile)||{}).name || "";
+  toast("Tarama başlatıldı"+(who?` — ${who}`:"")+"…");
+  setScanning(true);
+  pollScan();
+}
+function setScanning(on){
+  const btn=document.getElementById("scanBtn");
+  btn.classList.toggle("scanning",on);
+  btn.disabled=on;
+  document.getElementById("scanLabel").textContent = on?"SCANNING…":"SCAN NOW";
+}
+function pollScan(){
+  clearInterval(scanTimer);
+  scanTimer=setInterval(async()=>{
+    const s=await (await fetch(API+"/api/scan/status")).json();
+    if(!s.running){
+      clearInterval(scanTimer); setScanning(false);
+      toast("Tarama tamamlandı ✓");
+      await loadStats(); await loadJobs();
+    }
+  },3000);
+}
+
+// ── filter wiring ──
+document.getElementById("statusTabs").addEventListener("click",e=>{
+  const t=e.target.closest(".tab"); if(!t) return;
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+  t.classList.add("active"); state.status=t.dataset.status; loadJobs();
+});
+function onScore(){
+  const v=document.getElementById("scoreRange").value;
+  document.getElementById("scoreVal").textContent=v;
+  state.min_score=v; debouncedLoad();
+}
+let dt;
+function debouncedLoad(){
+  state.source=document.getElementById("sourceSel").value;
+  state.remote_only=document.getElementById("remoteChk").checked;
+  state.sort=document.getElementById("sortSel").value;
+  state.search=document.getElementById("searchBox").value;
+  clearTimeout(dt); dt=setTimeout(loadJobs,300);
+}
+['sourceSel','remoteChk','sortSel'].forEach(id=>{
+  document.getElementById(id).addEventListener("change",()=>{
+    state.source=document.getElementById("sourceSel").value;
+    state.remote_only=document.getElementById("remoteChk").checked;
+    state.sort=document.getElementById("sortSel").value;
+    loadJobs();
+  });
+});
+
+// ── init ──
+(async()=>{
+  await loadProfiles();
+  await loadStats(); await loadJobs();
+  if((await (await fetch(API+"/api/scan/status")).json()).running){setScanning(true);pollScan();}
+  setInterval(loadStats, 30000); // arka plan stat tazeleme
+})();
+</script>
+</body>
+</html>

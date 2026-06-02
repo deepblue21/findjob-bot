@@ -1,0 +1,42 @@
+# Secrets
+.env
+*.env
+!.env.example
+
+# Kişisel profiller (PII) — sadece örnek paylaşılır
+profiles/*.yaml
+!profiles/example.yaml
+
+# Yerel ayar (gerçek token içeriyorsa) — örneği paylaşılır
+# config.yaml artık secret içermiyor; commit edilebilir.
+
+# Veritabanı / loglar
+*.db
+*.sqlite3
+.job_bot/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Yedekler / geçici
+*.bak
+*.tmp
+*.log
+
+# OS / editör
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Yüklenen dosyalar
+uploads/
+
+# Eski kök profil (PII) ve yedekler
+/profile.yaml
+config.yaml.bak

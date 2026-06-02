@@ -1,0 +1,32 @@
+# ── GENEL AYARLAR (kişiye özel arama profiles/ klasöründe) ──
+telegram:
+  bot_token: "${TELEGRAM_BOT_TOKEN}"
+  chat_id: "${TELEGRAM_CHAT_ID}"
+
+schedule:
+  interval_hours: 6           # her N saatte tüm profiller otomatik taranır
+  min_score_to_notify: 3.0
+  min_score_to_store: 3.0     # bu puanin altindaki ilanlar hic kaydedilmez    # bu puanın altı Telegram'a gönderilmez
+
+# Tüm profillerde ORTAK puanlama (konum / çalışma şekli / seviye).
+# Kişiye özel beceriler profiles/*.yaml içinden otomatik eklenir.
+scoring:
+  izmir: 2
+  manisa: 2
+  uzaktan: 2
+  remote: 2
+  hibrit: 1
+  hybrid: 1
+  "ar-ge": 1
+  junior: 1
+  "mid-level": 1
+  senior: 1
+
+# Tüm profillerde ORTAK eleme (her profilin kendi exclude'u buna eklenir)
+filters:
+  exclude_keywords:
+    - "güvenlik görevlisi"
+    - "temizlik görevlisi"
+
+database:
+  path: "~/.job_bot/jobs.db"

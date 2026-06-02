@@ -1,0 +1,45 @@
+# ╭──────────────────────────────────────────────────────────╮
+# │  ÖRNEK PROFİL ŞABLONU                                       │
+# │  Kopyala: cp profiles/example.yaml profiles/ben.yaml       │
+# │  Sonra kendi bilgilerinle doldur. profiles/*.yaml git'e    │
+# │  GİRMEZ (kişisel veri); sadece bu örnek paylaşılır.        │
+# ╰──────────────────────────────────────────────────────────╯
+key: "ben"                       # benzersiz kısa kimlik (dosya başına)
+order: 1                         # dashboard'da sıralama
+name: "Ad Soyad"
+title: "Hedef Unvan"
+email: "ornek@example.com"
+phone: ""
+linkedin: ""
+location: "Şehir"
+years_experience: 0
+
+preferred_locations: ["İzmir", "Manisa"]   # kabul edilen şehirler
+work_modes: ["yerinde", "hibrit", "uzaktan"]
+
+summary: >
+  Kısa profil özeti — ön yazıların giriş tonunu belirler.
+
+education: "Okul — Bölüm"
+salary_expectation: "Görüşmeye açığım."
+availability: "En kısa sürede başlayabilirim."
+
+# Beceriler -> puanlamaya otomatik eklenir (düz string = varsayılan ağırlık)
+skill_weight: 2
+skills:
+  - "anahtar kelime 1"
+  - "anahtar kelime 2"
+  - "araç": 1
+
+# Bu kişiye özel arama (yalnızca Türkiye)
+search:
+  hours_old: 168
+  results_wanted: 25
+  jobspy_queries:
+    - { term: "Rol Adı", sites: ["indeed","google"], location: "Izmir, Turkey",  country_indeed: "Turkey" }
+    - { term: "Rol Adı", sites: ["indeed","google"], location: "Manisa, Turkey", country_indeed: "Turkey" }
+  kariyer_queries:
+    - "rol adı"
+
+exclude_keywords:
+  - "alakasız rol"
