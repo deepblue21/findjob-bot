@@ -6,40 +6,42 @@
 # ╰──────────────────────────────────────────────────────────╯
 key: "ben"                       # benzersiz kısa kimlik (dosya başına)
 order: 1                         # dashboard'da sıralama
-name: "Ad Soyad"
-title: "Hedef Unvan"
+name: "Örnek Kullanıcı"
+title: "Yazılım Test Uzmanı"
 email: "ornek@example.com"
 phone: ""
 linkedin: ""
-location: "Şehir"
+location: "İstanbul"
 years_experience: 0
 
-preferred_locations: ["İzmir", "Manisa"]   # kabul edilen şehirler
+preferred_locations: ["İstanbul", "Ankara"]   # kabul edilen şehirler
 work_modes: ["yerinde", "hibrit", "uzaktan"]
 
 summary: >
-  Kısa profil özeti — ön yazıların giriş tonunu belirler.
+  Yazılım test, kalite süreçleri ve otomasyon araçlarına ilgi duyan örnek profil.
 
-education: "Okul — Bölüm"
+education: "Üniversite — Bölüm"
 salary_expectation: "Görüşmeye açığım."
 availability: "En kısa sürede başlayabilirim."
 
 # Beceriler -> puanlamaya otomatik eklenir (düz string = varsayılan ağırlık)
 skill_weight: 2
 skills:
-  - "anahtar kelime 1"
-  - "anahtar kelime 2"
-  - "araç": 1
+  - "qa"
+  - "test mühendisi"
+  - "selenium": 1
+  - "api test": 1
 
-# Bu kişiye özel arama (yalnızca Türkiye)
+# Bu kişiye özel arama (Türkiye veya remote)
 search:
   hours_old: 168
   results_wanted: 25
   jobspy_queries:
-    - { term: "Rol Adı", sites: ["indeed","google"], location: "Izmir, Turkey",  country_indeed: "Turkey" }
-    - { term: "Rol Adı", sites: ["indeed","google"], location: "Manisa, Turkey", country_indeed: "Turkey" }
+    - { term: "Yazılım Test Uzmanı", sites: ["indeed","google"], location: "Istanbul, Turkey", country_indeed: "Turkey" }
+    - { term: "QA Engineer", sites: ["indeed","google"], location: "Remote", country_indeed: "Turkey" }
   kariyer_queries:
-    - "rol adı"
+    - "yazılım test uzmanı"
+    - "qa engineer"
 
 exclude_keywords:
   - "alakasız rol"

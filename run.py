@@ -11,6 +11,10 @@ import sys
 import threading
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 import uvicorn
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -38,12 +42,10 @@ PORT = 8765
 def main():
     cfg = scanner.load_config()
 
-    _tok = cfg["telegram"].get("bot_token", "")
-    if not _tok or "BURAYA" in _tok or _tok.startswith("${"):
-        print("\n❌ HATA: config.yaml icine bot_token ve chat_id yaz!\n")
-        print("   Telegram > @BotFather > /newbot  -> token")
-        print("   Telegram > @userinfobot          -> chat_id\n")
-        sys.exit(1)
+    if not scanner.telegram_ready(cfg.get("telegram")):
+        logger.warning("Telegram .env bilgileri yok; dashboard calisacak, bildirimler atlanacak.")
+        print("\n⚠️  Telegram .env bilgileri yok; dashboard calisacak, bildirimler atlanacak.")
+        print("   Bildirim icin .env dosyasina TELEGRAM_BOT_TOKEN ve TELEGRAM_CHAT_ID ekle.\n")
 
     # DB hazirla
     db.configure(cfg["database"]["path"])

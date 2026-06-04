@@ -7,9 +7,15 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://api.telegram.org/bot{token}/{method}"
 
 
+def _redact_token(text: str, token: str) -> str:
+    if token:
+        text = text.replace(token, "<token>")
+    return text
+
+
 def send_message(bot_token: str, chat_id: str, text: str) -> bool:
     if not bot_token or not chat_id or bot_token.startswith("${"):
-        logger.error("Telegram: bot_token/chat_id eksik (.env doldurulmamis).")
+        logger.warning("Telegram: bot_token/chat_id eksik (.env doldurulmamış); bildirim atlandı.")
         return False
     if not text:
         return False
@@ -28,7 +34,7 @@ def send_message(bot_token: str, chat_id: str, text: str) -> bool:
             logger.error(f"Telegram API hatası: {resp.status_code} {resp.text[:200]}")
         return resp.ok
     except Exception as e:
-        logger.error(f"Telegram gönderim hatası: {e}")
+        logger.error(f"Telegram gönderim hatası: {_redact_token(str(e), bot_token)}")
         return False
 
 

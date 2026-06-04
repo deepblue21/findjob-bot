@@ -54,6 +54,14 @@ def load_config() -> dict:
     return cfg
 
 
+def telegram_ready(tg: dict | None) -> bool:
+    """Telegram bildirimi için bot token ve chat id gerçekten ayarlı mı?"""
+    tg = tg or {}
+    token = str(tg.get("bot_token", "") or "").strip()
+    chat_id = str(tg.get("chat_id", "") or "").strip()
+    return bool(token and chat_id and not token.startswith("${") and not chat_id.startswith("${"))
+
+
 def _scan_one_profile(prof: dict, cfg: dict) -> dict:
     """Tek bir kişi (profil) için tarama."""
     key = prof.get("key", "")
@@ -69,8 +77,7 @@ def _scan_one_profile(prof: dict, cfg: dict) -> dict:
     scoring = dict(base_scoring)
     for kw, w in profile_scoring(prof).items():
         scoring[kw] = max(scoring.get(kw, 0), w)
-    # Konum önceliği: profilin İLK tercih şehri en yüksek puan -> en üstte görünür
-    # (Hande için Manisa, Salih için İzmir). Türkçe-güvenli anahtar (tr_norm).
+    # Konum önceliği: profilin ilk tercih şehri en yüksek puanla üstte görünür.
     LOC_W = [6, 3, 2]
     for i, city in enumerate(prof.get("preferred_locations", []) or []):
         ck = tr_norm(str(city))
@@ -164,14 +171,20 @@ def _scan_one_profile(prof: dict, cfg: dict) -> dict:
 
         # eşik üstü + bildirilmemişleri Telegram'a gönder (kişi adıyla)
         to_notify = db.get_unnotified(min_score, profile=key)
-        if to_notify:
+        notified_count = 0
+        if to_notify and telegram_ready(tg):
             notify_jobs(tg["bot_token"], tg["chat_id"], to_notify, label=name)
             db.mark_notified([j.url_hash for j in to_notify], profile=key)
+            notified_count = len(to_notify)
+        elif to_notify:
+            logger.info(
+                f"[{name}] Telegram bilgileri eksik; {len(to_notify)} bildirim beklemede kaldı."
+            )
 
-        db.finish_scan(scan_id, len(raw_jobs), new_count, len(to_notify), "done")
-        logger.info(f"✅ [{name}] bitti — {new_count} yeni, {len(to_notify)} bildirildi.\n")
+        db.finish_scan(scan_id, len(raw_jobs), new_count, notified_count, "done")
+        logger.info(f"✅ [{name}] bitti — {new_count} yeni, {notified_count} bildirildi.\n")
         return {"profile": key, "name": name, "raw": len(raw_jobs),
-                "new": new_count, "notified": len(to_notify)}
+                "new": new_count, "notified": notified_count}
 
     except Exception as e:
         logger.error(f"[{name}] Tarama hatası: {e}", exc_info=True)
@@ -205,8 +218,11 @@ def run_scan(cfg: dict | None = None, profile_key: str | None = None) -> dict:
 
         # Tarama bitince Telegram'a özet rapor
         try:
-            tg = cfg["telegram"]
-            notify_summary(tg["bot_token"], tg["chat_id"], results)
+            tg = cfg.get("telegram", {}) or {}
+            if telegram_ready(tg):
+                notify_summary(tg["bot_token"], tg["chat_id"], results)
+            else:
+                logger.info("Telegram bilgileri eksik; özet rapor atlandı.")
         except Exception as e:
             logger.warning(f"Özet rapor gönderilemedi: {e}")
 

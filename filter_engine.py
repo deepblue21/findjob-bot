@@ -48,7 +48,7 @@ def relevance_score(job, role_weights: dict) -> float:
 def location_allowed(location: str, cities: list, is_remote: bool = False) -> bool:
     """Kabul kuralı (yasak-liste mantığı):
       - Tamamen uzaktan/remote                       -> TUT
-      - İzin verilen şehir (İzmir/Manisa) konumda    -> TUT
+      - Profilde izin verilen şehir konumda          -> TUT
       - Açıkça BAŞKA bir büyük şehir (yerinde)        -> AT
       - Konum bilinmiyor/jenerik ("Türkiye", boş)     -> TUT (kaybetme;
         çünkü JobSpy sorgusu zaten şehir-kapsamlı)

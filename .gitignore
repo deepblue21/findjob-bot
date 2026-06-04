@@ -37,6 +37,12 @@ Thumbs.db
 
 # Yüklenen dosyalar
 uploads/
+resumes/
+cv/
+*.pdf
+*.doc
+*.docx
+*.rtf
 
 # Eski kök profil (PII) ve yedekler
 /profile.yaml

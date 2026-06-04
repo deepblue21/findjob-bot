@@ -27,6 +27,21 @@ COMPANY_KEYS = {"companyname", "company", "firmaadi", "corpname", "companytitle"
 CITY_KEYS  = {"cityname", "city", "sehir", "location", "il"}
 WORK_KEYS  = {"worktypetext", "worktype", "calismasekli", "workingtype"}
 
+TURKISH_CITIES = [
+    "Adana", "Adıyaman", "Afyonkarahisar", "Ağrı", "Amasya", "Ankara", "Antalya",
+    "Artvin", "Aydın", "Balıkesir", "Bilecik", "Bingöl", "Bitlis", "Bolu",
+    "Burdur", "Bursa", "Çanakkale", "Çankırı", "Çorum", "Denizli", "Diyarbakır",
+    "Edirne", "Elazığ", "Erzincan", "Erzurum", "Eskişehir", "Gaziantep",
+    "Giresun", "Gümüşhane", "Hakkari", "Hatay", "Isparta", "Mersin", "İstanbul",
+    "İzmir", "Kars", "Kastamonu", "Kayseri", "Kırklareli", "Kırşehir",
+    "Kocaeli", "Konya", "Kütahya", "Malatya", "Manisa", "Kahramanmaraş",
+    "Mardin", "Muğla", "Muş", "Nevşehir", "Niğde", "Ordu", "Rize", "Sakarya",
+    "Samsun", "Siirt", "Sinop", "Sivas", "Tekirdağ", "Tokat", "Trabzon",
+    "Tunceli", "Şanlıurfa", "Uşak", "Van", "Yozgat", "Zonguldak", "Aksaray",
+    "Bayburt", "Karaman", "Kırıkkale", "Batman", "Şırnak", "Bartın", "Ardahan",
+    "Iğdır", "Yalova", "Karabük", "Kilis", "Osmaniye", "Düzce",
+]
+
 
 def _build_url(query: str) -> str:
     slug = query.strip().lower().replace(" ", "+")
@@ -102,7 +117,7 @@ def _clean_kariyer_title(text: str) -> str:
 
 
 def _loc_from_text(text: str) -> tuple[str, str]:
-    """İlan metninden şehir + çalışma şekli çıkar (İzmir/Manisa/uzaktan tespiti)."""
+    """İlan metninden şehir + çalışma şekli çıkar."""
     t = _tr_low(text)
     work = ""
     if "uzaktan" in t or "remote" in t:
@@ -112,8 +127,8 @@ def _loc_from_text(text: str) -> tuple[str, str]:
     elif "is yerinde" in t or "iş yerinde" in t:
         work = "İş Yerinde"
     city = ""
-    for norm, disp in (("izmir", "İzmir"), ("manisa", "Manisa")):
-        if norm in t:
+    for disp in TURKISH_CITIES:
+        if _tr_low(disp) in t:
             city = disp
             break
     return city, work

@@ -9,17 +9,18 @@ schedule:
   min_score_to_store: 1.0     # dashboard'a kaydetme eşiği
   min_relevance: 1.0          # bir ilan en az bu kadar ROL/arama-terimi uyumu içermezse alınmaz
 
-# Tüm profillerde ORTAK puanlama (konum / çalışma şekli / seviye).
-# Kişiye özel beceriler profiles/*.yaml içinden otomatik eklenir.
+# Tüm profillerde ORTAK puanlama (çalışma şekli / seviye).
+# Konum önceliği ve kişiye özel beceriler profiles/*.yaml içinden otomatik eklenir.
 scoring:
-  izmir: 2
-  manisa: 2
   uzaktan: 2
   remote: 2
   hibrit: 1
   hybrid: 1
   "ar-ge": 1
+  stajyer: 1
+  intern: 1
   junior: 1
+  "entry level": 1
   "mid-level": 1
   senior: 1
 

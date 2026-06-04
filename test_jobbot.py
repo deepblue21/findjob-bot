@@ -6,6 +6,9 @@ Kendi geçici test profilini (profiles/_test.yaml) kurar, scraper'ları mock'lar
 """
 import sys, tempfile, os, shutil
 from pathlib import Path
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 sys.path.insert(0, str(Path(__file__).parent))
 
 PASS = 0; FAIL = 0; FAILS = []
@@ -24,6 +27,14 @@ import scanner as SC
 
 TEST_KEY = "tester"
 _TMP = {"dir": None, "old": None}
+
+
+def fake_config() -> dict:
+    cfg = SC.load_config()
+    cfg["telegram"] = {"bot_token": "tok", "chat_id": "chat"}
+    return cfg
+
+
 FIXTURE_YAML = """\
 key: "tester"
 order: 99
@@ -187,13 +198,39 @@ def test_scanner_pipeline():
     SC.notify_jobs = lambda bt,ci,jobs,label="": sent.append(("jobs",label,len(jobs)))
     SC.notify_summary = lambda bt,ci,res: sent.append(("summary",res))
     try:
-        SC.run_scan(profile_key=TEST_KEY)
+        SC.run_scan(cfg=fake_config(), profile_key=TEST_KEY)
         titles = [r["title"] for r in DB.get_jobs(profile=TEST_KEY)]
         check("İzmir QA tutuldu", "QA Test Mühendisi" in titles)
         check("İstanbul yerinde elendi", "Test Mühendisi" not in titles)
         check("uzaktan tutuldu", "Yazılım Test Uzmanı" in titles)
         check("alakasız (Garson) elendi", "Garson" not in titles)
         check("özet rapor gönderildi", any(s[0]=="summary" for s in sent))
+    finally:
+        SC.scrape_jobspy, SC.scrape_kariyer, SC.scrape_rss_feeds, SC.notify_jobs, SC.notify_summary = o
+        os.unlink(p)
+
+
+def test_scanner_without_telegram_keeps_unnotified():
+    print("\n[scanner telegram opsiyonel]")
+    p = tempfile.mktemp(suffix=".db")
+    DB.configure(p)
+    fake = [
+        Job("QA Test Mühendisi","Acme","İzmir, Türkiye","u_no_tg","indeed",description="selenium"),
+    ]
+    o = (SC.scrape_jobspy, SC.scrape_kariyer, SC.scrape_rss_feeds, SC.notify_jobs, SC.notify_summary)
+    sent = []
+    SC.scrape_jobspy = lambda *a, **k: fake
+    SC.scrape_kariyer = lambda *a, **k: []
+    SC.scrape_rss_feeds = lambda *a, **k: []
+    SC.notify_jobs = lambda *a, **k: sent.append("jobs")
+    SC.notify_summary = lambda *a, **k: sent.append("summary")
+    cfg = SC.load_config()
+    cfg["telegram"] = {"bot_token": "", "chat_id": ""}
+    try:
+        result = SC.run_scan(cfg=cfg, profile_key=TEST_KEY)
+        check("telegram yokken notify çağrılmadı", sent == [])
+        check("telegram yokken bildirim sayısı 0", result.get("notified") == 0)
+        check("telegram yokken bildirim beklemede kaldı", len(DB.get_unnotified(3.0, TEST_KEY)) == 1)
     finally:
         SC.scrape_jobspy, SC.scrape_kariyer, SC.scrape_rss_feeds, SC.notify_jobs, SC.notify_summary = o
         os.unlink(p)
@@ -221,7 +258,7 @@ def test_location_priority():
     SC.notify_jobs = lambda *a, **k: None
     SC.notify_summary = lambda *a, **k: None
     try:
-        SC.run_scan(profile_key=key)
+        SC.run_scan(cfg=fake_config(), profile_key=key)
         rows = DB.get_jobs(profile=key, sort="score")
         check("iki ilan da kabul", len(rows) == 2)
         check("Manisa ilk sırada", bool(rows) and "Manisa" in (rows[0]["location"] or ""))
@@ -268,7 +305,8 @@ if __name__ == "__main__":
     setup_fixture()
     try:
         for t in [test_filter_engine, test_db, test_profiles, test_dashboard_ui_contract, test_cover_letter,
-                  test_notifier, test_scanner_pipeline, test_location_priority, test_web_api]:
+                  test_notifier, test_scanner_pipeline, test_scanner_without_telegram_keeps_unnotified,
+                  test_location_priority, test_web_api]:
             try: t()
             except Exception as e:
                 FAIL += 1; FAILS.append(t.__name__+" (exception)")

@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
 """
-Self-test — kurulumu calistirmadan once dogrula.
-Calistir:  python selftest.py
-Telegram'a bir test mesaji gonderir, scraper'lari canli dener.
+Self-test — yerel kurulumu doğrula.
+Çalıştır:  python selftest.py
+
+Canlı scraper teşhisi için ayrıca `python diag.py` çalıştır.
+Telegram .env bilgileri varsa test mesajı gönderir; yoksa bu adımı atlar.
 """
 import sys
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 sys.path.insert(0, str(Path(__file__).parent))
 
-OK = "✅"; FAIL = "❌"; WARN = "⚠️ "
+OK = "✅"
+FAIL = "❌"
+WARN = "⚠️ "
 
 
 def check(name, fn):
@@ -28,73 +36,79 @@ def main():
     print("=" * 50)
     results = []
 
-    # 1. Config
     def _cfg():
-        import yaml
-        cfg = yaml.safe_load(open(Path(__file__).parent / "config.yaml", encoding="utf-8"))
         import scanner
+
         cfg = scanner.load_config()
-        if not cfg["telegram"].get("bot_token") or cfg["telegram"]["bot_token"].startswith("${"):
-            raise RuntimeError(".env doldurulmamis (TELEGRAM_BOT_TOKEN)")
-        return "config.yaml dolu"
+        assert "schedule" in cfg and "database" in cfg
+        if scanner.telegram_ready(cfg.get("telegram")):
+            return "config tamam; Telegram bildirimleri açık"
+        return "config tamam; Telegram .env yok, bildirimler kapalı"
     results.append(check("Config", _cfg))
 
-    # 2. Bagimliliklar
     def _deps():
         import jobspy, feedparser, requests, bs4, yaml, apscheduler, fastapi, uvicorn  # noqa
-        return "tum paketler kurulu"
-    results.append(check("Bagimliliklar", _deps))
+        return "tüm paketler kurulu"
+    results.append(check("Bağımlılıklar", _deps))
 
-    # 3. Moduller
     def _mods():
         import db, scanner, models, filter_engine, notifier  # noqa
         from scrapers import http_util, jobspy_scraper, rss_scraper, kariyer_scraper  # noqa
         from web import app  # noqa
-        return "tum moduller import edildi"
-    results.append(check("Moduller", _mods))
+        return "tüm modüller import edildi"
+    results.append(check("Modüller", _mods))
 
-    # 4. Veritabani
+    def _profiles():
+        import profiles
+
+        profs = profiles.list_profiles()
+        if not profs:
+            raise RuntimeError("profil yok; profiles/example.yaml dosyasını profiles/ben.yaml olarak kopyala")
+        return f"{len(profs)} profil bulundu"
+    results.append(check("Profiller", _profiles))
+
     def _db():
         import db, tempfile, os
+        from models import Job
+
         p = tempfile.mktemp(suffix=".db")
         db.configure(p)
-        from models import Job
         db.upsert_job(Job("Test", "Co", "Remote", "https://x.com/1", "test", score=5))
         assert db.get_stats()["total"] == 1
         os.unlink(p)
-        return "okuma/yazma/dedup calisiyor"
-    results.append(check("Veritabani", _db))
+        return "okuma/yazma/dedup çalışıyor"
+    results.append(check("Veritabanı", _db))
 
-    # 5. Telegram test mesaji
+    def _dashboard():
+        html = Path(__file__).parent / "web" / "static" / "index.html"
+        assert html.exists()
+        text = html.read_text(encoding="utf-8")
+        assert "filterSummary" in text and "data-theme=\"black\"" in text
+        return "dashboard statik dosyası hazır"
+    results.append(check("Dashboard", _dashboard))
+
     def _tg():
-        import yaml
-        from notifier import send_message
         import scanner
+        from notifier import send_message
+
         cfg = scanner.load_config()
+        if not scanner.telegram_ready(cfg.get("telegram")):
+            return "atlanıyor; .env içinde TELEGRAM_BOT_TOKEN/CHAT_ID yok"
         ok = send_message(
-            cfg["telegram"]["bot_token"], cfg["telegram"]["chat_id"],
-            "🤖 <b>Job Bot self-test</b>\nBaglanti basarili — bot calismaya hazir."
+            cfg["telegram"]["bot_token"],
+            cfg["telegram"]["chat_id"],
+            "🤖 <b>Job Bot self-test</b>\nBağlantı başarılı; bot çalışmaya hazır.",
         )
         if not ok:
-            raise RuntimeError("mesaj gonderilemedi — bot_token/chat_id kontrol et")
-        return "Telegram'a test mesaji gonderildi (kontrol et)"
+            raise RuntimeError("mesaj gönderilemedi; bot_token/chat_id kontrol et")
+        return "Telegram'a test mesajı gönderildi"
     results.append(check("Telegram", _tg))
-
-    # 6. Canli scraper denemesi (RSS + Kariyer)
-    def _scrape():
-        from scrapers.rss_scraper import scrape_rss_feeds
-        import yaml
-        cfg = yaml.safe_load(open(Path(__file__).parent / "config.yaml", encoding="utf-8"))
-        feeds = cfg["search"].get("rss_feeds", [])[:1]  # sadece ilk feed
-        jobs = scrape_rss_feeds(feeds) if feeds else []
-        return f"RSS canli deneme: {len(jobs)} ilan"
-    results.append(check("Canli scraper (RSS)", _scrape))
 
     print("=" * 50)
     if all(results):
-        print(f"{OK} HER SEY HAZIR — 'python run.py' ile baslat, http://localhost:8765 ac")
+        print(f"{OK} HER ŞEY HAZIR — 'python run.py' ile başlat, http://localhost:8765 aç")
     else:
-        print(f"{WARN} Bazi kontroller basarisiz — yukaridaki {FAIL} satirlari duzelt")
+        print(f"{WARN}Bazı kontroller başarısız — yukarıdaki {FAIL} satırlarını düzelt")
     print("=" * 50)
 
 
