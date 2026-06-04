@@ -8,6 +8,13 @@ BASE_URL = "https://api.telegram.org/bot{token}/{method}"
 
 
 def send_message(bot_token: str, chat_id: str, text: str) -> bool:
+    if not bot_token or not chat_id or bot_token.startswith("${"):
+        logger.error("Telegram: bot_token/chat_id eksik (.env doldurulmamis).")
+        return False
+    if not text:
+        return False
+    if len(text) > 4096:           # Telegram mesaj limiti
+        text = text[:4090] + "…"
     url = BASE_URL.format(token=bot_token, method="sendMessage")
     payload = {
         "chat_id": chat_id,

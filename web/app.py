@@ -23,13 +23,35 @@ def index():
     return FileResponse(STATIC_DIR / "index.html")
 
 
+def _profile_keywords(p: dict) -> list:
+    """Bir profilin rol/konum anahtar kelimeleri (drawer'da 'neden eşleşti')."""
+    kws = []
+    for s in (p.get("skills") or []):
+        if isinstance(s, dict):
+            kws += [str(k) for k in s.keys()]
+        elif s:
+            kws.append(str(s))
+    sc = p.get("search", {}) or {}
+    for q in (sc.get("jobspy_queries") or []):
+        if q.get("term"): kws.append(str(q["term"]))
+    for q in (sc.get("kariyer_queries") or []):
+        kws.append(str(q))
+    kws += [str(c) for c in (p.get("preferred_locations") or [])]
+    seen, out = set(), []
+    for k in kws:
+        kl = k.strip().lower()
+        if kl and kl not in seen:
+            seen.add(kl); out.append(k.strip())
+    return out
+
+
 @app.get("/api/profiles")
 def api_profiles():
     """Dashboard'daki isim seçici için profilleri döndür."""
     return {
         "profiles": [
             {"key": p["key"], "name": p.get("name", p["key"]),
-             "title": p.get("title", "")}
+             "title": p.get("title", ""), "keywords": _profile_keywords(p)}
             for p in profiles_mod.list_profiles()
         ]
     }

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import db
 from models import Job
-from filter_engine import score_job, should_exclude, location_allowed, is_remote_job
+from filter_engine import score_job, should_exclude, location_allowed, is_remote_job, relevance_score, tr_norm
 from notifier import notify_jobs, notify_summary
 from profiles import list_profiles, get_profile, profile_scoring
 from scrapers.jobspy_scraper import scrape_jobspy
@@ -69,6 +69,13 @@ def _scan_one_profile(prof: dict, cfg: dict) -> dict:
     scoring = dict(base_scoring)
     for kw, w in profile_scoring(prof).items():
         scoring[kw] = max(scoring.get(kw, 0), w)
+    # Konum önceliği: profilin İLK tercih şehri en yüksek puan -> en üstte görünür
+    # (Hande için Manisa, Salih için İzmir). Türkçe-güvenli anahtar (tr_norm).
+    LOC_W = [6, 3, 2]
+    for i, city in enumerate(prof.get("preferred_locations", []) or []):
+        ck = tr_norm(str(city))
+        if ck:
+            scoring[ck] = LOC_W[i] if i < len(LOC_W) else 2
     exclude_kw = list(base_exclude) + list(prof.get("exclude_keywords", []) or [])
 
     scan_id = db.start_scan(key)
@@ -106,29 +113,54 @@ def _scan_one_profile(prof: dict, cfg: dict) -> dict:
         logger.info(f"[{name}] Ham toplam: {len(raw_jobs)} ilan")
 
         cities = prof.get("preferred_locations", []) or []
-        min_store = float(cfg["schedule"].get("min_score_to_store", 3.0))
+        min_store = float(cfg["schedule"].get("min_score_to_store", 1.0))
+        min_rel = float(cfg["schedule"].get("min_relevance", 1.0))
+        # Rol uygunluğu = beceriler + kişinin ARADIĞI pozisyon terimleri
+        role_weights = dict(profile_scoring(prof))
+        for q in (search.get("jobspy_queries") or []):
+            t = str(q.get("term", "")).strip().lower()
+            if t:
+                role_weights.setdefault(t, 2.0)
+        for q in (search.get("kariyer_queries") or []):
+            t = str(q).strip().lower()
+            if t:
+                role_weights.setdefault(t, 2.0)
 
         # Eski/alakasiz 'new' kayitlari temizle (Istanbul vb. yerinde, dusuk skor)
         try:
+            from models import Job as _J
             for jr in db.get_jobs(profile=key, status="new", min_score=0, limit=2000):
-                if jr["score"] < min_store or not location_allowed(
+                _tmp = _J(jr.get("title",""), jr.get("company",""), jr.get("location",""),
+                          jr.get("url",""), jr.get("source",""), description=jr.get("description","") or "")
+                rel = relevance_score(_tmp, role_weights)
+                if rel < min_rel or not location_allowed(
                         jr.get("location", ""), cities, jr.get("is_remote")):
                     db.delete_job(jr["url_hash"], key)
         except Exception as e:
             logger.warning(f"Temizlik hatasi: {e}")
 
         new_count = 0
+        n_excluded = n_lowscore = n_wrongloc = n_stored = 0
         for job in raw_jobs:
             if should_exclude(job, exclude_kw):
+                n_excluded += 1
                 continue
-            job.score = score_job(job, scoring)
-            if job.score < min_store:
-                continue
-            if not location_allowed(job.location, cities, job.is_remote):
+            job.score = score_job(job, scoring)        # gösterim/sıralama skoru
+            if relevance_score(job, role_weights) < min_rel:  # rol uygunluğu
+                n_lowscore += 1
                 continue
             job.is_remote = is_remote_job(job)  # uzaktan/remote -> is_remote=1
+            if not location_allowed(job.location, cities, job.is_remote):
+                n_wrongloc += 1
+                continue
+            n_stored += 1
             if db.upsert_job(job, profile=key):
                 new_count += 1
+        logger.info(
+            f"[{name}] filtre: ham={len(raw_jobs)} "
+            f"elendi(kelime)={n_excluded} dusuk_skor(<{min_store})={n_lowscore} "
+            f"yanlis_konum={n_wrongloc} -> kabul={n_stored} (yeni={new_count})"
+        )
 
         # eşik üstü + bildirilmemişleri Telegram'a gönder (kişi adıyla)
         to_notify = db.get_unnotified(min_score, profile=key)

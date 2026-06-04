@@ -120,6 +120,27 @@ Beceriler puanlamaya otomatik eklenir.
 
 ---
 
+## 🧠 Filtreleme Nasıl Çalışır
+
+Bir ilan ancak şu üç şartı geçerse kaydedilir:
+1. **Eleme kelimesi** içermiyorsa (`exclude_keywords`).
+2. **Rol uygunluğu** ≥ `min_relevance` — başlık/açıklama, kişinin becerilerinden **veya aradığı pozisyon terimlerinden** en az birini içermeli. (Yalnızca doğru şehirde olması yetmez.)
+3. **Konum uygun** — İzin verilen şehir (İzmir/Manisa) **veya** tamamen uzaktan; konumu bilinmeyen/jenerik ilanlar tutulur, sadece başka şehirdeki **yerinde** ilanlar elenir.
+
+Telegram'a yalnızca skoru `min_score_to_notify` üstü ilanlar gönderilir; dashboard tümünü gösterir.
+
+## 🌗 Tema & Arayüz
+
+Sağ üstteki 🌙/☀️ düğmesiyle **açık/koyu tema**; seçim tarayıcıda saklanır. Arayüz Inter fontu, kart tabanlı düzen, çalışma-şekli rozetleri (uzaktan/hibrit/yerinde), skor renkleri ve ön yazı modalı içerir.
+
+## 🧪 Testler
+
+```bash
+python test_jobbot.py     # 60+ test (filtre, db, scanner, API, Telegram) — ağ gerektirmez
+python diag.py            # scraper'ları CANLI dener, kaç ilan bulundu/elendi raporu
+```
+Testler GitHub Actions ile her push'ta otomatik koşar (`.github/workflows/tests.yml`).
+
 ## 🛡️ Bot Engeli Stratejisi
 
 429/5xx'te exponential backoff + retry, her istekte rotating User-Agent, sorgular arası random delay, URL-hash bazlı dedup. Kariyer.net scraper'ı yapıdan bağımsızdır (`__NEXT_DATA__` JSON, bulamazsa HTML fallback).

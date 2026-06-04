@@ -22,6 +22,8 @@ def list_profiles() -> list[dict]:
         return []
     out = []
     for p in sorted(PROFILES_DIR.glob("*.yaml")):
+        if p.name.startswith(("_", ".")) or p.name == "example.yaml":
+            continue  # gecici/fixture/sablon dosyalari atla
         try:
             d = _load_yaml(p)
             d["key"] = d.get("key") or p.stem

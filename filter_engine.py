@@ -34,17 +34,45 @@ def is_remote_job(job) -> bool:
     return bool(job.is_remote) or "uzaktan" in t or "remote" in t
 
 
+def relevance_score(job, role_weights: dict) -> float:
+    """Sadece ROL/beceri kelimelerine göre uygunluk (konum ve remote SAYILMAZ).
+    Böylece sadece doğru şehirde olması bir işi 'uygun' yapmaz."""
+    text = tr_norm(" ".join([job.title or "", job.description or ""]))
+    total = 0.0
+    for kw, w in (role_weights or {}).items():
+        if tr_norm(str(kw)) in text:
+            total += w
+    return round(total, 1)
+
+
 def location_allowed(location: str, cities: list, is_remote: bool = False) -> bool:
-    """Kabul kuralı: izin verilen şehir (İzmir/Manisa) konumda geçiyorsa (yerinde/hibrit
-    dahil) VEYA ilan tamamen uzaktan/remote ise True. Diğer şehirler (İstanbul vb.) yerinde
-    ise elenir."""
+    """Kabul kuralı (yasak-liste mantığı):
+      - Tamamen uzaktan/remote                       -> TUT
+      - İzin verilen şehir (İzmir/Manisa) konumda    -> TUT
+      - Açıkça BAŞKA bir büyük şehir (yerinde)        -> AT
+      - Konum bilinmiyor/jenerik ("Türkiye", boş)     -> TUT (kaybetme;
+        çünkü JobSpy sorgusu zaten şehir-kapsamlı)
+    """
     t = tr_norm(location)
     if is_remote or "uzaktan" in t or "remote" in t:
-        return True  # tüm Türkiye uzaktan
+        return True
     for c in cities or []:
-        if tr_norm(str(c)) in t:
-            return True  # İzmir / Manisa (yerinde + hibrit dahil)
-    return False
+        if tr_norm(c) in t:
+            return True
+    # İzin verilenler dışındaki belirgin şehirler -> yerinde ise ele
+    OTHER_CITIES = [
+        "istanbul", "ankara", "bursa", "antalya", "kocaeli", "konya", "adana",
+        "gaziantep", "kayseri", "mersin", "eskisehir", "samsun", "denizli",
+        "sakarya", "tekirdag", "balikesir", "trabzon", "malatya", "kahramanmaras",
+        "van", "diyarbakir", "sanliurfa", "aydin", "mugla", "hatay", "ordu",
+        "afyon", "isparta", "elazig", "tokat", "sivas", "corum", "yozgat",
+        "zonguldak", "edirne", "canakkale", "kibris", "yurt disi",
+    ]
+    for o in OTHER_CITIES:
+        if o in t:
+            return False
+    # Bilinmeyen / jenerik konum -> tut
+    return True
 
 
 def filter_and_score(jobs, scoring_weights, exclude_keywords, min_score=2.0):

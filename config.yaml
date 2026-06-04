@@ -4,9 +4,10 @@ telegram:
   chat_id: "${TELEGRAM_CHAT_ID}"
 
 schedule:
-  interval_hours: 6           # her N saatte tüm profiller otomatik taranır
-  min_score_to_notify: 3.0
-  min_score_to_store: 3.0     # bu puanin altindaki ilanlar hic kaydedilmez    # bu puanın altı Telegram'a gönderilmez
+  interval_hours: 3           # her N saatte tüm profiller otomatik taranır
+  min_score_to_notify: 3.0    # Telegram'a gönderme eşiği
+  min_score_to_store: 1.0     # dashboard'a kaydetme eşiği
+  min_relevance: 1.0          # bir ilan en az bu kadar ROL/arama-terimi uyumu içermezse alınmaz
 
 # Tüm profillerde ORTAK puanlama (konum / çalışma şekli / seviye).
 # Kişiye özel beceriler profiles/*.yaml içinden otomatik eklenir.
@@ -27,6 +28,8 @@ filters:
   exclude_keywords:
     - "güvenlik görevlisi"
     - "temizlik görevlisi"
+    - "engelli"          # engelli-kadro ilanlarını ele
+    - "(engelli)"
 
 database:
   path: "~/.job_bot/jobs.db"

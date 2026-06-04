@@ -86,8 +86,41 @@ def _extract_next_data(html: str) -> list[dict]:
     return best
 
 
+def _tr_low(s: str) -> str:
+    """Türkçe-güvenli küçük harf (İ/I/ı -> i)."""
+    return (s or "").replace("İ", "i").replace("I", "i").replace("ı", "i").lower()
+
+
+def _clean_kariyer_title(text: str) -> str:
+    """Kariyer anchor metnini temizle: 'Sponsorlu İlan' on ekini ve sehir/calisma-sekli/
+    tarih kuyrugunu at, makul bir baslik birak."""
+    t = re.sub(r"^\s*Sponsorlu İlan\s*", "", text, flags=re.IGNORECASE)
+    # calisma sekli / tip / tarih isaretlerinden once kes
+    t = re.split(r"\s+(?:İş Yerinde|Uzaktan|Hibrit|Remote|Tam zamanlı|Yarı zamanlı|"
+                 r"Dönemsel|Serbest|Ort\.|update|\d+\s*gün)\b", t, maxsplit=1)[0]
+    return t.strip(" -|·")
+
+
+def _loc_from_text(text: str) -> tuple[str, str]:
+    """İlan metninden şehir + çalışma şekli çıkar (İzmir/Manisa/uzaktan tespiti)."""
+    t = _tr_low(text)
+    work = ""
+    if "uzaktan" in t or "remote" in t:
+        work = "Uzaktan / Remote"
+    elif "hibrit" in t:
+        work = "Hibrit"
+    elif "is yerinde" in t or "iş yerinde" in t:
+        work = "İş Yerinde"
+    city = ""
+    for norm, disp in (("izmir", "İzmir"), ("manisa", "Manisa")):
+        if norm in t:
+            city = disp
+            break
+    return city, work
+
+
 def _fallback_html(html: str) -> list[dict]:
-    """/is-ilani/ desenli linkleri dogrudan HTML'den topla."""
+    """/is-ilani/ desenli linkleri dogrudan HTML'den topla (sehir + calisma sekli ile)."""
     soup = BeautifulSoup(html, "html.parser")
     seen = set()
     results = []
@@ -101,12 +134,20 @@ def _fallback_html(html: str) -> list[dict]:
         if href in seen:
             continue
         seen.add(href)
-        text = a.get_text(strip=True)
+        raw = a.get_text(" ", strip=True)
+        if "sponsorlu" in _tr_low(raw):
+            continue  # Sponsorlu İlan reklamlarini atla (alakasiz, her sayfada cikar)
+        city, work = _loc_from_text(raw)
+        text = _clean_kariyer_title(raw)
         if not text or len(text) < 3:
-            # baslik bos olabilir; URL slug'undan turet
             m = re.search(r"/is-ilani/(.+)-\d+$", href)
             text = m.group(1).replace("-", " ").title() if m else "İlan"
-        results.append({"name": text, "url": href})
+        item = {"name": text, "url": href}
+        if city:
+            item["cityname"] = city
+        if work:
+            item["worktypetext"] = work
+        results.append(item)
     return results
 
 

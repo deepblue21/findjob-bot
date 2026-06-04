@@ -27,6 +27,7 @@ __pycache__/
 *.bak
 *.tmp
 *.log
+.superpowers/
 
 # OS / editör
 .DS_Store

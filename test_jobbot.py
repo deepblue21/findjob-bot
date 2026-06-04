@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+"""
+JOB_BOT test paketi — bağımsız (pytest gerekmez, özel profile gerekmez).
+Çalıştır:  python test_jobbot.py
+Kendi geçici test profilini (profiles/_test.yaml) kurar, scraper'ları mock'lar.
+"""
+import sys, tempfile, os, shutil
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
+PASS = 0; FAIL = 0; FAILS = []
+def check(name, cond):
+    global PASS, FAIL
+    if cond: PASS += 1; print(f"  ✅ {name}")
+    else: FAIL += 1; FAILS.append(name); print(f"  ❌ {name}")
+
+from models import Job
+import filter_engine as FE
+import db as DB
+import profiles as P
+import cover_letter as CL
+import notifier as NT
+import scanner as SC
+
+TEST_KEY = "tester"
+_TMP = {"dir": None, "old": None}
+FIXTURE_YAML = """\
+key: "tester"
+order: 99
+name: "Test Kullanıcı"
+title: "QA Test Mühendisi"
+email: "test@example.com"
+location: "İzmir"
+preferred_locations: ["İzmir", "Manisa"]
+work_modes: ["yerinde", "hibrit", "uzaktan"]
+summary: "Test profili."
+skill_weight: 2
+skills:
+  - "qa"
+  - "test mühendisi"
+  - "selenium"
+search:
+  hours_old: 168
+  results_wanted: 10
+  jobspy_queries:
+    - { term: "Test Mühendisi", sites: ["indeed"], location: "Izmir, Turkey", country_indeed: "Turkey" }
+  kariyer_queries:
+    - "yazılım test uzmanı"
+exclude_keywords:
+  - "satış temsilcisi"
+"""
+
+def setup_fixture():
+    _TMP["dir"] = Path(tempfile.mkdtemp(prefix="jobbot_test_"))
+    (_TMP["dir"] / "tester.yaml").write_text(FIXTURE_YAML, encoding="utf-8")
+    _TMP["old"] = P.PROFILES_DIR
+    P.PROFILES_DIR = _TMP["dir"]   # gerçek profiles/ yerine geçici klasör
+
+def teardown_fixture():
+    if _TMP["old"] is not None:
+        P.PROFILES_DIR = _TMP["old"]
+    if _TMP["dir"]:
+        shutil.rmtree(_TMP["dir"], ignore_errors=True)
+
+
+def test_filter_engine():
+    print("\n[filter_engine]")
+    check("tr_norm İ->i", FE.tr_norm("İdari İŞLER")=="idari işler")
+    check("tr_norm dotless ı", FE.tr_norm("YAZILIM")=="yazilim")
+    j = Job("QA Test Mühendisi","X","İzmir, Türkiye","u","indeed",description="selenium uzaktan")
+    check("score_job topluyor (>0)", FE.score_job(j, {"qa":3,"selenium":2,"izmir":2})>0)
+    check("score_job remote bonus", FE.score_job(Job("t","c","Uzaktan","u","s"), {})>=1.0)
+    check("İ-başlık eşleşmesi", FE.score_job(Job("İdari İşler Uzmanı","c","l","u","s"), {"idari işler":2})>=2)
+    check("relevance konum saymaz", FE.relevance_score(Job("Garson","c","İzmir","u","s"), {"qa":3,"izmir":2})==0)
+    check("relevance rol sayar", FE.relevance_score(Job("QA Uzmanı","c","l","u","s"), {"qa":3})==3)
+    check("should_exclude", FE.should_exclude(Job("Satış Temsilcisi","c","l","u","s"), ["satış temsilcisi"]))
+    check("location izmir TUT", FE.location_allowed("İzmir, Türkiye", ["İzmir","Manisa"], False))
+    check("location manisa TUT", FE.location_allowed("Manisa", ["İzmir","Manisa"], False))
+    check("location jenerik TUT", FE.location_allowed("Türkiye", ["İzmir","Manisa"], False))
+    check("location boş TUT", FE.location_allowed("", ["İzmir","Manisa"], False))
+    check("location remote TUT", FE.location_allowed("İstanbul", ["İzmir","Manisa"], True))
+    check("location İstanbul yerinde AT", not FE.location_allowed("İstanbul", ["İzmir","Manisa"], False))
+    check("location Ankara yerinde AT", not FE.location_allowed("Ankara, Türkiye", ["İzmir","Manisa"], False))
+    check("is_remote_job uzaktan", FE.is_remote_job(Job("t","c","Uzaktan / Remote","u","s")))
+    check("is_remote_job yerinde False", not FE.is_remote_job(Job("t","c","İzmir","u","s")))
+
+
+def test_db():
+    print("\n[db]")
+    p = tempfile.mktemp(suffix=".db")
+    DB.configure(p)
+    check("upsert yeni True", DB.upsert_job(Job("QA Test","A","İzmir","https://x/1","indeed",score=8,is_remote=True), "a") is True)
+    check("upsert tekrar False (dedup)", DB.upsert_job(Job("QA Test","A","İzmir","https://x/1","indeed",score=9), "a") is False)
+    DB.upsert_job(Job("İdari","B","Manisa","https://x/2","kariyer.net",score=5), "b")
+    check("profil ayrımı a=1", len(DB.get_jobs(profile="a"))==1)
+    check("profil ayrımı b=1", len(DB.get_jobs(profile="b"))==1)
+    check("get_jobs all=2", len(DB.get_jobs(profile="all"))==2)
+    check("min_score filtresi", len(DB.get_jobs(profile="a", min_score=9))==1)
+    check("remote_only filtresi", len(DB.get_jobs(profile="a", remote_only=True))==1)
+    check("kaynak filtresi", len(DB.get_jobs(profile="b", source="kariyer.net"))==1)
+    check("arama filtresi", len(DB.get_jobs(profile="a", search="qa"))==1)
+    h = DB.get_jobs(profile="a")[0]["url_hash"]
+    DB.update_status(h, "saved", "a")
+    check("update_status", DB.get_jobs(profile="a", status="saved")[0]["url_hash"]==h)
+    st = DB.get_stats("a")
+    check("get_stats total", st["total"]==1)
+    check("get_stats saved", st["saved"]==1)
+    un = DB.get_unnotified(3.0, "b")
+    check("get_unnotified döner Job", len(un)==1 and hasattr(un[0],"title"))
+    DB.mark_notified([DB.get_jobs(profile="b")[0]["url_hash"]], "b")
+    check("mark_notified sonrası 0", len(DB.get_unnotified(3.0,"b"))==0)
+    DB.delete_job(h, "a")
+    check("delete_job", len(DB.get_jobs(profile="a"))==0)
+    os.unlink(p)
+
+
+def test_profiles():
+    print("\n[profiles]")
+    ps = P.list_profiles()
+    check("en az 1 profil", len(ps)>=1)
+    check("test profili yüklendi", any(x["key"]==TEST_KEY for x in ps))
+    t = P.get_profile(TEST_KEY)
+    check("get_profile çalışıyor", t and t["key"]==TEST_KEY)
+    check("search.jobspy_queries var", len(t["search"]["jobspy_queries"])>0)
+    w = P.profile_scoring(t)
+    check("profile_scoring boş değil", len(w)>0)
+    check("ağırlık float", isinstance(list(w.values())[0], float))
+    check("example.yaml mevcut", (Path(__file__).parent/"profiles"/"example.yaml").exists())
+
+
+def test_dashboard_ui_contract():
+    print("\n[dashboard ui]")
+    html = (Path(__file__).parent / "web" / "static" / "index.html").read_text(encoding="utf-8")
+    check("aktif filtre özeti var", 'id="filterSummary"' in html)
+    check("arama temizleme düğmesi var", 'id="clearSearchBtn"' in html)
+    check("sekme sayaçları var", 'id="tab-all-count"' in html and 'id="tab-new-count"' in html)
+    check("filtreleri temizleme fonksiyonu var", "function clearFilters()" in html)
+    check("filtre özeti render fonksiyonu var", "function renderFilterSummary()" in html)
+    check("durum geri alma fonksiyonu var", "function undoStatus()" in html)
+    check("siyah terminal tema var", 'id:"black"' in html and 'data-theme="black"' in html and "#c6f035" in html and "#4fe0c5" in html)
+
+
+def test_cover_letter():
+    print("\n[cover_letter]")
+    prof = P.get_profile(TEST_KEY) or {}
+    job = {"title":"QA Test Mühendisi","company":"Acme","url":"https://x/1","location":"İzmir","score":8,"is_remote":True,"url_hash":"abc"}
+    a = CL.generate_application(job, prof)
+    check("cover_letter string", isinstance(a["cover_letter"], str) and len(a["cover_letter"])>50)
+    check("şirket adı geçiyor", "Acme" in a["cover_letter"])
+    check("answers>=3", len(a["answers"])>=3)
+    check("highlights var", len(a["highlights"])>0)
+    check("url korunuyor", a["url"]=="https://x/1")
+
+
+def test_notifier():
+    print("\n[notifier]")
+    sent = []
+    orig = NT.send_message
+    NT.send_message = lambda t,c,text:(sent.append(text), True)[1]
+    NT.notify_summary("tok","chat",[{"name":"A","raw":10,"new":3,"notified":2},{"name":"B","raw":5,"new":1,"notified":1}])
+    check("summary gönderildi", len(sent)==1 and "Tarama Raporu" in sent[0])
+    check("summary toplam doğru", "Toplam yeni" in sent[0])
+    sent.clear()
+    NT.notify_jobs("tok","chat",[Job("QA","A","İzmir","u","indeed",score=8)], label="A")
+    check("notify_jobs >=3 mesaj", len(sent)>=3)
+    check("notify_jobs label", any("A" in m for m in sent))
+    NT.send_message = orig
+    check("boş token False", NT.send_message("", "c", "x") is False)
+    check("placeholder token False", NT.send_message("${TELEGRAM_BOT_TOKEN}", "c", "x") is False)
+
+
+def test_scanner_pipeline():
+    print("\n[scanner pipeline (mock scraper)]")
+    p = tempfile.mktemp(suffix=".db")
+    DB.configure(p)
+    fake = [
+        Job("QA Test Mühendisi","Acme","İzmir, Türkiye","u1","indeed",description="selenium"),     # TUT
+        Job("Test Mühendisi","Beta","İstanbul","u2","indeed",description=""),                        # AT (İstanbul yerinde)
+        Job("Yazılım Test Uzmanı","Gamma","Uzaktan","u3","kariyer.net",description="uzaktan"),       # TUT (remote, arama terimi)
+        Job("Garson","Cafe","İzmir","u4","indeed",description=""),                                    # AT (rol uygun değil)
+    ]
+    o = (SC.scrape_jobspy, SC.scrape_kariyer, SC.scrape_rss_feeds, SC.notify_jobs, SC.notify_summary)
+    sent = []
+    SC.scrape_jobspy = lambda *a, **k: fake
+    SC.scrape_kariyer = lambda *a, **k: []
+    SC.scrape_rss_feeds = lambda *a, **k: []
+    SC.notify_jobs = lambda bt,ci,jobs,label="": sent.append(("jobs",label,len(jobs)))
+    SC.notify_summary = lambda bt,ci,res: sent.append(("summary",res))
+    try:
+        SC.run_scan(profile_key=TEST_KEY)
+        titles = [r["title"] for r in DB.get_jobs(profile=TEST_KEY)]
+        check("İzmir QA tutuldu", "QA Test Mühendisi" in titles)
+        check("İstanbul yerinde elendi", "Test Mühendisi" not in titles)
+        check("uzaktan tutuldu", "Yazılım Test Uzmanı" in titles)
+        check("alakasız (Garson) elendi", "Garson" not in titles)
+        check("özet rapor gönderildi", any(s[0]=="summary" for s in sent))
+    finally:
+        SC.scrape_jobspy, SC.scrape_kariyer, SC.scrape_rss_feeds, SC.notify_jobs, SC.notify_summary = o
+        os.unlink(p)
+
+
+def test_location_priority():
+    print("\n[konum önceliği — ilk şehir üstte]")
+    key = "manisatest"
+    fx = P.PROFILES_DIR / f"{key}.yaml"
+    fx.write_text(
+        'key: "manisatest"\norder: 98\nname: "Manisa Test"\ntitle: "İdari İşler Uzmanı"\n'
+        'preferred_locations: ["Manisa", "İzmir"]\nskill_weight: 2\n'
+        'skills: ["idari işler", "satın alma"]\nsearch:\n  jobspy_queries:\n'
+        '    - { term: "İdari İşler Uzmanı", sites: ["indeed"], location: "Manisa, Turkey", country_indeed: "Turkey" }\n'
+        '  kariyer_queries: ["idari işler uzmanı"]\n', encoding="utf-8")
+    p = tempfile.mktemp(suffix=".db"); DB.configure(p)
+    fake = [
+        Job("İdari İşler Uzmanı","A","İzmir, Türkiye","u1","indeed",description="satın alma"),
+        Job("İdari İşler Uzmanı","B","Manisa, Türkiye","u2","indeed",description="satın alma"),
+    ]
+    o = (SC.scrape_jobspy, SC.scrape_kariyer, SC.scrape_rss_feeds, SC.notify_jobs, SC.notify_summary)
+    SC.scrape_jobspy = lambda *a, **k: fake
+    SC.scrape_kariyer = lambda *a, **k: []
+    SC.scrape_rss_feeds = lambda *a, **k: []
+    SC.notify_jobs = lambda *a, **k: None
+    SC.notify_summary = lambda *a, **k: None
+    try:
+        SC.run_scan(profile_key=key)
+        rows = DB.get_jobs(profile=key, sort="score")
+        check("iki ilan da kabul", len(rows) == 2)
+        check("Manisa ilk sırada", bool(rows) and "Manisa" in (rows[0]["location"] or ""))
+        check("Manisa skoru > İzmir", rows[0]["score"] > rows[-1]["score"])
+    finally:
+        SC.scrape_jobspy, SC.scrape_kariyer, SC.scrape_rss_feeds, SC.notify_jobs, SC.notify_summary = o
+        os.unlink(p)
+        try: fx.unlink()
+        except OSError: pass
+
+
+def test_web_api():
+    print("\n[web api (gerçek HTTP)]")
+    import threading, time, json, urllib.request, uvicorn
+    p = tempfile.mktemp(suffix=".db")
+    DB.configure(p)
+    DB.upsert_job(Job("QA Test","A","İzmir","https://x/1","indeed",score=8,is_remote=True), TEST_KEY)
+    from web.app import app
+    cfg = uvicorn.Config(app, host="127.0.0.1", port=8809, log_level="error")
+    srv = uvicorn.Server(cfg)
+    threading.Thread(target=srv.run, daemon=True).start(); time.sleep(2.0)
+    op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    def g(path): return json.load(op.open("http://127.0.0.1:8809"+path, timeout=6))
+    def post(path):
+        return json.load(op.open(urllib.request.Request("http://127.0.0.1:8809"+path, method="POST"), timeout=6))
+    try:
+        check("/ 200", op.open("http://127.0.0.1:8809/", timeout=6).status==200)
+        check("/api/profiles", len(g("/api/profiles")["profiles"])>=1)
+        check("/api/stats total", g("/api/stats?profile="+TEST_KEY)["total"]==1)
+        jb = g("/api/jobs?profile="+TEST_KEY)
+        check("/api/jobs count", jb["count"]==1)
+        check("/api/jobs remote", g("/api/jobs?profile="+TEST_KEY+"&remote_only=true")["count"]==1)
+        check("/api/jobs arama", g("/api/jobs?profile="+TEST_KEY+"&search=qa")["count"]==1)
+        h = jb["jobs"][0]["url_hash"]
+        check("/api/application", "cover_letter" in g(f"/api/jobs/{h}/application?profile="+TEST_KEY))
+        check("/api/status ok", post(f"/api/jobs/{h}/status?status=saved&profile="+TEST_KEY).get("ok") is True)
+        check("/api/scan/status", "running" in g("/api/scan/status"))
+    finally:
+        srv.should_exit = True; os.unlink(p)
+
+
+if __name__ == "__main__":
+    print("="*60); print("  JOB_BOT TEST PAKETİ"); print("="*60)
+    setup_fixture()
+    try:
+        for t in [test_filter_engine, test_db, test_profiles, test_dashboard_ui_contract, test_cover_letter,
+                  test_notifier, test_scanner_pipeline, test_location_priority, test_web_api]:
+            try: t()
+            except Exception as e:
+                FAIL += 1; FAILS.append(t.__name__+" (exception)")
+                import traceback; print(f"  ❌ {t.__name__} EXCEPTION: {e}"); traceback.print_exc()
+    finally:
+        teardown_fixture()
+    print("\n"+"="*60)
+    print(f"  SONUÇ: {PASS} geçti, {FAIL} başarısız")
+    if FAILS: print("  Başarısızlar:", ", ".join(FAILS))
+    print("="*60)
+    sys.exit(1 if FAIL else 0)
