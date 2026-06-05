@@ -11,6 +11,7 @@ import re
 import logging
 from bs4 import BeautifulSoup
 from datetime import datetime
+from cities import TURKISH_CITIES, tr_low
 from models import Job
 from scrapers.http_util import make_session, get_with_retry, polite_delay
 
@@ -26,21 +27,6 @@ ID_KEYS    = {"id", "jobid", "advid", "advertid", "ilanid", "advertno"}
 COMPANY_KEYS = {"companyname", "company", "firmaadi", "corpname", "companytitle"}
 CITY_KEYS  = {"cityname", "city", "sehir", "location", "il"}
 WORK_KEYS  = {"worktypetext", "worktype", "calismasekli", "workingtype"}
-
-TURKISH_CITIES = [
-    "Adana", "Adıyaman", "Afyonkarahisar", "Ağrı", "Amasya", "Ankara", "Antalya",
-    "Artvin", "Aydın", "Balıkesir", "Bilecik", "Bingöl", "Bitlis", "Bolu",
-    "Burdur", "Bursa", "Çanakkale", "Çankırı", "Çorum", "Denizli", "Diyarbakır",
-    "Edirne", "Elazığ", "Erzincan", "Erzurum", "Eskişehir", "Gaziantep",
-    "Giresun", "Gümüşhane", "Hakkari", "Hatay", "Isparta", "Mersin", "İstanbul",
-    "İzmir", "Kars", "Kastamonu", "Kayseri", "Kırklareli", "Kırşehir",
-    "Kocaeli", "Konya", "Kütahya", "Malatya", "Manisa", "Kahramanmaraş",
-    "Mardin", "Muğla", "Muş", "Nevşehir", "Niğde", "Ordu", "Rize", "Sakarya",
-    "Samsun", "Siirt", "Sinop", "Sivas", "Tekirdağ", "Tokat", "Trabzon",
-    "Tunceli", "Şanlıurfa", "Uşak", "Van", "Yozgat", "Zonguldak", "Aksaray",
-    "Bayburt", "Karaman", "Kırıkkale", "Batman", "Şırnak", "Bartın", "Ardahan",
-    "Iğdır", "Yalova", "Karabük", "Kilis", "Osmaniye", "Düzce",
-]
 
 
 def _build_url(query: str) -> str:
@@ -103,7 +89,7 @@ def _extract_next_data(html: str) -> list[dict]:
 
 def _tr_low(s: str) -> str:
     """Türkçe-güvenli küçük harf (İ/I/ı -> i)."""
-    return (s or "").replace("İ", "i").replace("I", "i").replace("ı", "i").lower()
+    return tr_low(s)
 
 
 def _clean_kariyer_title(text: str) -> str:

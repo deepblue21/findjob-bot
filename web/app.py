@@ -1,21 +1,38 @@
 """FastAPI web uygulaması — çok profilli dashboard + JSON API."""
+from contextlib import asynccontextmanager
 import logging
+import re
 import threading
+import time
+from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import db
 import scanner
 import profiles as profiles_mod
+from cities import TURKISH_CITIES
 from cover_letter import generate_application
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Job Bot Dashboard")
 STATIC_DIR = Path(__file__).parent / "static"
+UPLOAD_ROOT = Path(__file__).resolve().parents[1] / "uploads" / "resumes"
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    if db._DB_PATH is None:
+        cfg = scanner.load_config()
+        db.configure(cfg["database"]["path"])
+    yield
+
+
+app = FastAPI(title="Job Bot Dashboard", lifespan=lifespan)
 
 
 @app.get("/")
@@ -57,6 +74,11 @@ def api_profiles():
     }
 
 
+@app.get("/api/filter-options")
+def api_filter_options():
+    return {"cities": TURKISH_CITIES}
+
+
 @app.get("/api/stats")
 def api_stats(profile: str = Query("all")):
     return db.get_stats(profile=profile)
@@ -69,16 +91,92 @@ def api_jobs(
     source: str = Query("all"),
     min_score: float = Query(0.0),
     remote_only: bool = Query(False),
+    city: str = Query("all"),
+    work_mode: str = Query("all"),
+    days: str = Query("all"),
     search: str = Query(""),
     sort: str = Query("score"),
     limit: int = Query(200),
+    offset: int = Query(0),
 ):
     jobs = db.get_jobs(
         profile=profile, status=status, source=source, min_score=min_score,
-        remote_only=remote_only, search=search or None,
-        sort=sort, limit=limit,
+        remote_only=remote_only, city=city, work_mode=work_mode, days=days,
+        search=search or None, sort=sort, limit=limit, offset=offset,
     )
     return {"jobs": jobs, "count": len(jobs)}
+
+
+def _safe_segment(value: str, default: str = "general") -> str:
+    value = re.sub(r"[^a-zA-Z0-9_.-]+", "-", (value or "").strip()).strip(".-")
+    return value[:80] or default
+
+
+def _safe_filename(value: str) -> str:
+    name = Path(value or "resume.pdf").name
+    stem = re.sub(r"[^a-zA-Z0-9ğüşöçıİĞÜŞÖÇ_.-]+", "-", Path(name).stem).strip(".-")
+    return (stem[:80] or "resume") + ".pdf"
+
+
+def _profile_upload_dir(profile: str) -> Path:
+    return UPLOAD_ROOT / _safe_segment(profile)
+
+
+def _upload_info(path: Path, profile: str) -> dict:
+    stat = path.stat()
+    stored = path.name
+    original = re.sub(r"^\d+_\d+_", "", stored)
+    return {
+        "profile": profile or "general",
+        "stored_name": stored,
+        "original_name": original,
+        "size": stat.st_size,
+        "uploaded_at": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+
+@app.get("/api/uploads")
+def api_uploads(profile: str = Query("")):
+    prof = _safe_segment(profile)
+    folder = _profile_upload_dir(prof)
+    if not folder.exists():
+        return {"files": []}
+    files = sorted(folder.glob("*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return {"files": [_upload_info(p, prof) for p in files]}
+
+
+@app.post("/api/uploads")
+async def api_upload_pdfs(profile: str = Query(""), files: list[UploadFile] = File(...)):
+    prof = _safe_segment(profile)
+    folder = _profile_upload_dir(prof)
+    folder.mkdir(parents=True, exist_ok=True)
+    saved = []
+    for i, file in enumerate(files):
+        original = file.filename or "resume.pdf"
+        data = await file.read()
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail=f"{original} 10 MB sınırını aşıyor")
+        if not original.lower().endswith(".pdf") or not data.startswith(b"%PDF"):
+            raise HTTPException(status_code=400, detail=f"{original} geçerli bir PDF değil")
+        stored = f"{int(time.time()*1000)}_{i}_{_safe_filename(original)}"
+        target = folder / stored
+        target.write_bytes(data)
+        saved.append(_upload_info(target, prof))
+        await file.close()
+    return {"ok": True, "files": saved}
+
+
+@app.delete("/api/uploads/{stored_name}")
+def api_delete_upload(stored_name: str, profile: str = Query("")):
+    prof = _safe_segment(profile)
+    folder = _profile_upload_dir(prof)
+    target = (folder / Path(stored_name).name).resolve()
+    if folder.resolve() not in target.parents:
+        raise HTTPException(status_code=400, detail="geçersiz dosya yolu")
+    if not target.exists():
+        return JSONResponse({"error": "dosya bulunamadı"}, status_code=404)
+    target.unlink()
+    return {"ok": True}
 
 
 @app.post("/api/jobs/{url_hash}/status")

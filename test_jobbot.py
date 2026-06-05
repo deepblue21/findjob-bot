@@ -125,6 +125,24 @@ def test_db():
     os.unlink(p)
 
 
+def test_db_general_filters():
+    print("\n[db genel filtreler]")
+    p = tempfile.mktemp(suffix=".db")
+    DB.configure(p)
+    DB.upsert_job(Job("QA Test","A","İzmir","https://f/1","indeed",score=8,is_remote=True), "a")
+    DB.upsert_job(Job("İdari İşler","B","İstanbul Hibrit","https://f/2","kariyer.net",score=6,is_remote=False), "a")
+    DB.upsert_job(Job("Satın Alma","C","Ankara","https://f/3","google",score=5,is_remote=False), "a")
+    try:
+        check("şehir filtresi İzmir", len(DB.get_jobs(profile="a", city="İzmir"))==1)
+        check("şehir filtresi İstanbul", len(DB.get_jobs(profile="a", city="İstanbul"))==1)
+        check("çalışma şekli remote", len(DB.get_jobs(profile="a", work_mode="remote"))==1)
+        check("çalışma şekli hibrit", len(DB.get_jobs(profile="a", work_mode="hybrid"))==1)
+        check("çalışma şekli yerinde", len(DB.get_jobs(profile="a", work_mode="onsite"))==1)
+        check("tarih filtresi", len(DB.get_jobs(profile="a", days=7))==3)
+    finally:
+        os.unlink(p)
+
+
 def test_profiles():
     print("\n[profiles]")
     ps = P.list_profiles()
@@ -300,13 +318,62 @@ def test_web_api():
         srv.should_exit = True; os.unlink(p)
 
 
+def test_upload_api():
+    print("\n[upload api]")
+    import threading, time, json, urllib.request, uvicorn
+    import web.app as WA
+    old_root = WA.UPLOAD_ROOT
+    tmp_root = Path(tempfile.mkdtemp(prefix="jobbot_uploads_"))
+    WA.UPLOAD_ROOT = tmp_root
+    from web.app import app
+    cfg = uvicorn.Config(app, host="127.0.0.1", port=8810, log_level="error")
+    srv = uvicorn.Server(cfg)
+    threading.Thread(target=srv.run, daemon=True).start(); time.sleep(2.0)
+    op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+    def get(path):
+        return json.load(op.open("http://127.0.0.1:8810"+path, timeout=6))
+
+    def delete(path):
+        req = urllib.request.Request("http://127.0.0.1:8810"+path, method="DELETE")
+        return json.load(op.open(req, timeout=6))
+
+    def post_pdf(path, filename, payload):
+        boundary = "----jobbot-test-boundary"
+        body = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="files"; filename="{filename}"\r\n'
+            "Content-Type: application/pdf\r\n\r\n"
+        ).encode("utf-8") + payload + f"\r\n--{boundary}--\r\n".encode("utf-8")
+        req = urllib.request.Request(
+            "http://127.0.0.1:8810"+path,
+            data=body,
+            method="POST",
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        )
+        return json.load(op.open(req, timeout=6))
+
+    try:
+        up = post_pdf("/api/uploads?profile="+TEST_KEY, "cv-test.pdf", b"%PDF-1.4\n%test\n")
+        check("pdf upload ok", up.get("ok") is True and up.get("files"))
+        files = get("/api/uploads?profile="+TEST_KEY)["files"]
+        check("pdf listelendi", len(files)==1 and files[0]["original_name"]=="cv-test.pdf")
+        stored = files[0]["stored_name"]
+        check("pdf silindi", delete("/api/uploads/"+stored+"?profile="+TEST_KEY).get("ok") is True)
+        check("silme sonrası liste boş", get("/api/uploads?profile="+TEST_KEY)["files"]==[])
+    finally:
+        srv.should_exit = True
+        WA.UPLOAD_ROOT = old_root
+        shutil.rmtree(tmp_root, ignore_errors=True)
+
+
 if __name__ == "__main__":
     print("="*60); print("  JOB_BOT TEST PAKETİ"); print("="*60)
     setup_fixture()
     try:
-        for t in [test_filter_engine, test_db, test_profiles, test_dashboard_ui_contract, test_cover_letter,
+        for t in [test_filter_engine, test_db, test_db_general_filters, test_profiles, test_dashboard_ui_contract, test_cover_letter,
                   test_notifier, test_scanner_pipeline, test_scanner_without_telegram_keeps_unnotified,
-                  test_location_priority, test_web_api]:
+                  test_location_priority, test_web_api, test_upload_api]:
             try: t()
             except Exception as e:
                 FAIL += 1; FAILS.append(t.__name__+" (exception)")

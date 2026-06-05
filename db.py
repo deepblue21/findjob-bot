@@ -6,6 +6,7 @@ Thread-safe: her işlem için yeni bağlantı açar (scheduler + web aynı anda 
 import sqlite3
 from pathlib import Path
 from contextlib import contextmanager
+from cities import city_variants
 from models import Job
 
 _DB_PATH: Path | None = None
@@ -116,9 +117,16 @@ def upsert_job(job: Job, profile: str = "") -> bool:
 
 
 def get_jobs(profile=None, status=None, source=None, min_score=0.0,
-             remote_only=False, search=None, sort="score", limit=200) -> list[dict]:
+             remote_only=False, search=None, sort="score", limit=200,
+             city=None, work_mode=None, days=None, offset=0) -> list[dict]:
     query = "SELECT * FROM jobs WHERE score >= ?"
     params: list = [min_score]
+    remote_sql = ("(is_remote = 1 OR LOWER(COALESCE(location,'')) LIKE '%uzaktan%' "
+                  "OR LOWER(COALESCE(location,'')) LIKE '%remote%' "
+                  "OR LOWER(COALESCE(job_type,'')) LIKE '%remote%')")
+    hybrid_sql = ("(LOWER(COALESCE(location,'')) LIKE '%hibrit%' "
+                  "OR LOWER(COALESCE(location,'')) LIKE '%hybrid%' "
+                  "OR LOWER(COALESCE(job_type,'')) LIKE '%hybrid%')")
 
     if profile and profile != "all":
         query += " AND profile = ?"
@@ -130,8 +138,27 @@ def get_jobs(profile=None, status=None, source=None, min_score=0.0,
         query += " AND source = ?"
         params.append(source)
     if remote_only:
-        query += (" AND (is_remote = 1 OR LOWER(location) LIKE '%uzaktan%'"
-                  " OR LOWER(location) LIKE '%remote%')")
+        query += f" AND {remote_sql}"
+    if city and city != "all":
+        variants = city_variants(str(city))
+        if variants:
+            query += " AND (" + " OR ".join("location LIKE ?" for _ in variants) + ")"
+            params.extend([f"%{v}%" for v in variants])
+    if work_mode and work_mode != "all":
+        if work_mode == "remote":
+            query += f" AND {remote_sql}"
+        elif work_mode == "hybrid":
+            query += f" AND {hybrid_sql}"
+        elif work_mode == "onsite":
+            query += f" AND NOT {remote_sql} AND NOT {hybrid_sql}"
+    if days and str(days) != "all":
+        try:
+            n_days = int(days)
+        except (TypeError, ValueError):
+            n_days = 0
+        if n_days > 0:
+            query += " AND found_at >= datetime('now','localtime', ?)"
+            params.append(f"-{n_days} days")
     if search:
         query += " AND (LOWER(title) LIKE ? OR LOWER(company) LIKE ?)"
         like = f"%{search.lower()}%"
@@ -142,8 +169,8 @@ def get_jobs(profile=None, status=None, source=None, min_score=0.0,
         "date": "found_at DESC",
         "company": "company ASC",
     }.get(sort, "score DESC")
-    query += f" ORDER BY {order} LIMIT ?"
-    params.append(limit)
+    query += f" ORDER BY {order} LIMIT ? OFFSET ?"
+    params.extend([limit, offset or 0])
 
     with get_conn() as conn:
         rows = conn.execute(query, params).fetchall()

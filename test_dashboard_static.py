@@ -57,12 +57,30 @@ def test_filter_and_status_contract(src: str) -> None:
     required = [
         ('id="filterSummary"', "aktif filtre özeti"),
         ('id="clearSearchBtn"', "arama temizleme düğmesi"),
+        ('id="citySel"', "şehir filtresi"),
+        ('id="workModeSel"', "çalışma şekli filtresi"),
+        ('id="daysSel"', "tarih filtresi"),
         ('id="tab-all-count"', "tümü sekme sayacı"),
         ('id="tab-new-count"', "yeni sekme sayacı"),
         ("function renderFilterSummary()", "filtre özeti fonksiyonu"),
         ("function clearFilters()", "filtre temizleme fonksiyonu"),
         ("function undoStatus()", "durum geri alma fonksiyonu"),
         ('label:"Geri al"', "toast geri alma aksiyonu"),
+    ]
+    for needle, label in required:
+        check(label, needle in src)
+
+
+def test_upload_contract(src: str) -> None:
+    print("\n[pdf upload contract]")
+    required = [
+        ('id="resumePanel"', "PDF paneli"),
+        ('id="resumeInput"', "PDF dosya alanı"),
+        ('id="uploadList"', "yüklenen PDF listesi"),
+        ('accept=".pdf,application/pdf"', "yalnızca PDF kabulü"),
+        ("function loadUploads()", "yüklenenleri listeleme fonksiyonu"),
+        ("function uploadResumes()", "PDF yükleme fonksiyonu"),
+        ("/api/uploads", "upload API bağlantısı"),
     ]
     for needle, label in required:
         check(label, needle in src)
@@ -91,6 +109,7 @@ def main() -> int:
     src = html()
     test_theme_contract(src)
     test_filter_and_status_contract(src)
+    test_upload_contract(src)
     test_inline_scripts_compile(src)
     print("\n" + "=" * 60)
     print(f"  SONUÇ: {PASS} geçti, {FAIL} başarısız")
