@@ -174,8 +174,21 @@
   .upload-item{display:inline-flex;align-items:center;gap:7px;max-width:260px;padding:6px 9px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);font-size:11.5px;font-weight:650}
   .upload-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .upload-size{font-family:'JetBrains Mono',monospace;color:var(--muted);font-size:10.5px;flex:none}
+  .upload-analyze{height:21px;padding:0 8px;border-radius:999px;background:var(--brand-soft);color:var(--brand);font-size:10.5px;font-weight:800;flex:none}
+  .upload-analyze:hover{background:var(--brand);color:#fff}
   .upload-del{width:21px;height:21px;border-radius:50%;display:grid;place-items:center;background:transparent;color:var(--muted-2);font-size:12px;flex:none}
   .upload-del:hover{background:var(--rose-soft);color:var(--rose)}
+  .resume-analysis{display:none;grid-column:1/-1;border-top:1px solid var(--border);padding-top:13px}
+  .resume-analysis.show{display:block}
+  .analysis-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px}
+  .analysis-title{font-size:12.5px;font-weight:800;color:var(--text)}
+  .analysis-status{font-size:11.5px;color:var(--muted);font-family:'JetBrains Mono',monospace}
+  .analysis-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 18px}
+  .analysis-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted-2);font-weight:800;margin-bottom:7px}
+  .analysis-chips{display:flex;flex-wrap:wrap;gap:6px}
+  .analysis-chip{display:inline-flex;align-items:center;min-height:24px;padding:4px 9px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);font-size:11.5px;font-weight:700}
+  .analysis-empty{font-size:11.5px;color:var(--muted)}
+  .analysis-preview{margin-top:12px;padding:10px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);font-size:12px;line-height:1.55;color:var(--text-2);max-height:92px;overflow:auto}
 
   .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin:18px 0 16px}
   .stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;box-shadow:var(--shadow-sm);transition:transform .18s,box-shadow .18s;cursor:pointer}
@@ -418,6 +431,7 @@
       </label>
       <div class="upload-list" id="uploadList"></div>
     </div>
+    <div class="resume-analysis" id="resumeAnalysis" aria-live="polite"></div>
   </section>
 
   <div class="stats" id="stats">
@@ -619,8 +633,33 @@ async function switchProfile(key){ if(key===state.profile) return; state.profile
 // ── PDF kaynakları ──
 function renderUploads(files){
   const box=document.getElementById("uploadList");
+  renderResumeAnalysis(null);
   if(!files.length){ box.innerHTML='<span class="resume-sub">PDF yok</span>'; return; }
-  box.innerHTML=files.map(f=>`<span class="upload-item" title="${esc(f.original_name)}"><span>📄</span><span class="upload-name">${esc(f.original_name)}</span><span class="upload-size">${fmtBytes(f.size)}</span><button class="upload-del" onclick="deleteUpload('${esc(f.stored_name)}')" title="Sil" aria-label="PDF sil">✕</button></span>`).join('');
+  box.innerHTML=files.map(f=>`<span class="upload-item" title="${esc(f.original_name)}"><span>📄</span><span class="upload-name">${esc(f.original_name)}</span><span class="upload-size">${fmtBytes(f.size)}</span><button class="upload-analyze" onclick="analyzeUpload('${esc(f.stored_name)}')" title="Önerileri çıkar" aria-label="PDF önerilerini çıkar">Önerileri çıkar</button><button class="upload-del" onclick="deleteUpload('${esc(f.stored_name)}')" title="Sil" aria-label="PDF sil">✕</button></span>`).join('');
+}
+function analysisChips(items){
+  if(!items||!items.length) return '<span class="analysis-empty">bulunamadı</span>';
+  return items.map(x=>`<span class="analysis-chip">${esc(x)}</span>`).join('');
+}
+function renderResumeAnalysis(data){
+  const box=document.getElementById("resumeAnalysis");
+  if(!box) return;
+  if(!data){ box.classList.remove("show"); box.innerHTML=""; return; }
+  const s=data.suggestions||{};
+  const status=data.status==="ok" ? `${data.text_chars||0} karakter okundu` : "metin çıkarılamadı";
+  const preview=data.preview ? `<div class="analysis-preview">${esc(data.preview)}</div>` : "";
+  box.innerHTML=`
+    <div class="analysis-head">
+      <div class="analysis-title">${esc((data.file||{}).original_name||"PDF")} önerileri</div>
+      <div class="analysis-status">${status}</div>
+    </div>
+    <div class="analysis-grid">
+      <div><div class="analysis-label">beceriler</div><div class="analysis-chips">${analysisChips(s.skills)}</div></div>
+      <div><div class="analysis-label">pozisyonlar</div><div class="analysis-chips">${analysisChips(s.titles)}</div></div>
+      <div><div class="analysis-label">şehirler</div><div class="analysis-chips">${analysisChips(s.locations)}</div></div>
+      <div><div class="analysis-label">arama terimleri</div><div class="analysis-chips">${analysisChips(s.search_terms)}</div></div>
+    </div>${preview}`;
+  box.classList.add("show");
 }
 async function loadUploads(){
   if(!state.profile){ renderUploads([]); return; }
@@ -642,8 +681,22 @@ async function uploadResumes(){
     const data=await r.json();
     toast(`${(data.files||[]).length} PDF yüklendi ✓`);
     await loadUploads();
+    if((data.files||[]).length===1) await analyzeUpload(data.files[0].stored_name);
   }catch(e){ toast("PDF yüklenemedi",false); }
   finally{ input.value=""; }
+}
+async function analyzeUpload(stored){
+  if(!stored) return;
+  const box=document.getElementById("resumeAnalysis");
+  box.classList.add("show");
+  box.innerHTML='<div class="resume-sub">PDF okunuyor…</div>';
+  try{
+    const r=await fetch(API+"/api/uploads/"+encodeURIComponent(stored)+"/analysis?profile="+encodeURIComponent(state.profile));
+    if(!r.ok){ toast("PDF analizi alınamadı",false); renderResumeAnalysis(null); return; }
+    const data=await r.json();
+    renderResumeAnalysis(data);
+    toast(data.status==="ok" ? "PDF önerileri hazır" : "PDF metni okunamadı", data.status==="ok");
+  }catch(e){ toast("PDF analizi alınamadı",false); renderResumeAnalysis(null); }
 }
 async function deleteUpload(stored){
   if(!stored) return;

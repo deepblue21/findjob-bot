@@ -7,3 +7,4 @@ apscheduler>=3.10.4
 fastapi>=0.110
 uvicorn>=0.29
 python-multipart>=0.0.9
+pypdf>=4.0

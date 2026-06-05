@@ -86,6 +86,19 @@ def test_upload_contract(src: str) -> None:
         check(label, needle in src)
 
 
+def test_resume_analysis_contract(src: str) -> None:
+    print("\n[pdf analysis contract]")
+    required = [
+        ('id="resumeAnalysis"', "PDF analiz paneli"),
+        ("function analyzeUpload(", "PDF analiz fonksiyonu"),
+        ("function renderResumeAnalysis(", "PDF analiz render fonksiyonu"),
+        ("/analysis", "analiz API bağlantısı"),
+        ("Önerileri çıkar", "PDF öneri aksiyonu"),
+    ]
+    for needle, label in required:
+        check(label, needle in src)
+
+
 def test_inline_scripts_compile(src: str) -> None:
     print("\n[js syntax]")
     scripts = re.findall(r"<script>([\s\S]*?)</script>", src)
@@ -110,6 +123,7 @@ def main() -> int:
     test_theme_contract(src)
     test_filter_and_status_contract(src)
     test_upload_contract(src)
+    test_resume_analysis_contract(src)
     test_inline_scripts_compile(src)
     print("\n" + "=" * 60)
     print(f"  SONUÇ: {PASS} geçti, {FAIL} başarısız")

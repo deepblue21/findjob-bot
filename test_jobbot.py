@@ -318,13 +318,41 @@ def test_web_api():
         srv.should_exit = True; os.unlink(p)
 
 
+def test_resume_analyzer():
+    print("\n[resume analyzer]")
+    from resume_analyzer import suggest_profile_from_text
+
+    text = """
+    QA Test Mühendisi olarak Selenium, Postman, SQL ve API test deneyimim var.
+    İzmir ve Manisa lokasyonlarında hibrit veya uzaktan çalışmaya uygunum.
+    """
+    result = suggest_profile_from_text(text)
+    suggestions = result["suggestions"]
+    check("beceriler çıkarıldı", "Selenium" in suggestions["skills"] and "SQL" in suggestions["skills"])
+    check("şehirler çıkarıldı", "İzmir" in suggestions["locations"] and "Manisa" in suggestions["locations"])
+    check("pozisyon önerisi çıkarıldı", any("Test" in title for title in suggestions["titles"]))
+    check("arama terimi önerisi çıkarıldı", any("QA" in term or "Test" in term for term in suggestions["search_terms"]))
+
+
 def test_upload_api():
     print("\n[upload api]")
     import threading, time, json, urllib.request, uvicorn
     import web.app as WA
     old_root = WA.UPLOAD_ROOT
+    old_analyze = WA.analyze_resume_pdf
     tmp_root = Path(tempfile.mkdtemp(prefix="jobbot_uploads_"))
     WA.UPLOAD_ROOT = tmp_root
+    WA.analyze_resume_pdf = lambda path: {
+        "status": "ok",
+        "text_chars": 64,
+        "preview": "QA Test Mühendisi Selenium SQL İzmir",
+        "suggestions": {
+            "skills": ["Selenium", "SQL"],
+            "titles": ["QA Test Mühendisi"],
+            "locations": ["İzmir"],
+            "search_terms": ["QA Test Mühendisi", "Yazılım Test Uzmanı"],
+        },
+    }
     from web.app import app
     cfg = uvicorn.Config(app, host="127.0.0.1", port=8810, log_level="error")
     srv = uvicorn.Server(cfg)
@@ -359,11 +387,16 @@ def test_upload_api():
         files = get("/api/uploads?profile="+TEST_KEY)["files"]
         check("pdf listelendi", len(files)==1 and files[0]["original_name"]=="cv-test.pdf")
         stored = files[0]["stored_name"]
+        analysis = get("/api/uploads/"+stored+"/analysis?profile="+TEST_KEY)
+        check("pdf analiz endpoint ok", analysis.get("status")=="ok" and analysis.get("text_chars")==64)
+        check("pdf analiz beceri döndü", "Selenium" in analysis["suggestions"]["skills"])
+        check("pdf analiz dosya bilgisi döndü", analysis["file"]["stored_name"]==stored)
         check("pdf silindi", delete("/api/uploads/"+stored+"?profile="+TEST_KEY).get("ok") is True)
         check("silme sonrası liste boş", get("/api/uploads?profile="+TEST_KEY)["files"]==[])
     finally:
         srv.should_exit = True
         WA.UPLOAD_ROOT = old_root
+        WA.analyze_resume_pdf = old_analyze
         shutil.rmtree(tmp_root, ignore_errors=True)
 
 
@@ -373,7 +406,7 @@ if __name__ == "__main__":
     try:
         for t in [test_filter_engine, test_db, test_db_general_filters, test_profiles, test_dashboard_ui_contract, test_cover_letter,
                   test_notifier, test_scanner_pipeline, test_scanner_without_telegram_keeps_unnotified,
-                  test_location_priority, test_web_api, test_upload_api]:
+                  test_location_priority, test_web_api, test_resume_analyzer, test_upload_api]:
             try: t()
             except Exception as e:
                 FAIL += 1; FAILS.append(t.__name__+" (exception)")

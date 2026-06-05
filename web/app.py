@@ -16,6 +16,7 @@ import scanner
 import profiles as profiles_mod
 from cities import TURKISH_CITIES
 from cover_letter import generate_application
+from resume_analyzer import analyze_resume_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,14 @@ def _profile_upload_dir(profile: str) -> Path:
     return UPLOAD_ROOT / _safe_segment(profile)
 
 
+def _resolve_upload_path(profile: str, stored_name: str) -> Path:
+    folder = _profile_upload_dir(profile)
+    target = (folder / Path(stored_name).name).resolve()
+    if folder.resolve() not in target.parents:
+        raise HTTPException(status_code=400, detail="geçersiz dosya yolu")
+    return target
+
+
 def _upload_info(path: Path, profile: str) -> dict:
     stat = path.stat()
     stored = path.name
@@ -166,13 +175,20 @@ async def api_upload_pdfs(profile: str = Query(""), files: list[UploadFile] = Fi
     return {"ok": True, "files": saved}
 
 
+@app.get("/api/uploads/{stored_name}/analysis")
+def api_upload_analysis(stored_name: str, profile: str = Query("")):
+    prof = _safe_segment(profile)
+    target = _resolve_upload_path(prof, stored_name)
+    if not target.exists() or target.suffix.lower() != ".pdf":
+        return JSONResponse({"error": "dosya bulunamadı"}, status_code=404)
+    analysis = analyze_resume_pdf(target)
+    return {"file": _upload_info(target, prof), **analysis}
+
+
 @app.delete("/api/uploads/{stored_name}")
 def api_delete_upload(stored_name: str, profile: str = Query("")):
     prof = _safe_segment(profile)
-    folder = _profile_upload_dir(prof)
-    target = (folder / Path(stored_name).name).resolve()
-    if folder.resolve() not in target.parents:
-        raise HTTPException(status_code=400, detail="geçersiz dosya yolu")
+    target = _resolve_upload_path(prof, stored_name)
     if not target.exists():
         return JSONResponse({"error": "dosya bulunamadı"}, status_code=404)
     target.unlink()
