@@ -101,6 +101,74 @@ Tarayıcıda: **http://localhost:8765**
 
 ---
 
+## 🌐 Uzaktan Erişim (Tailscale)
+
+Evde değilken dashboard'a telefonundan veya başka bir cihazından güvenli şekilde erişmek için
+Tailscale kullanabilirsin. Bu yöntem modem port yönlendirmesi gerektirmez ve **Tailscale Funnel**
+açılmadığı sürece dashboard'u herkese açık internete yayınlamaz; yalnızca aynı Tailscale hesabına
+bağlı cihazlar erişebilir.
+
+### 1) Tailscale'i kur
+
+- Evde dashboard'u çalıştıran bilgisayara Tailscale kur ve giriş yap.
+- Telefona veya dışarıdan bağlanacağın cihaza Tailscale kur.
+- Tüm cihazlarda aynı Tailscale hesabıyla oturum aç.
+- Telefonda Tailscale uygulamasında bilgisayarı görüyorsan bağlantı hazırdır.
+
+### 2) Dashboard'u bilgisayarda çalıştır
+
+```bash
+python run.py
+```
+
+Bilgisayarda yerel kontrol:
+
+```text
+http://localhost:8765
+```
+
+### 3) Dashboard'u Tailscale içinde yayınla
+
+Windows'ta PowerShell'i gerekirse yönetici olarak açıp çalıştır:
+
+```powershell
+& "C:\Program Files\Tailscale\tailscale.exe" serve --yes --bg --tcp=8765 127.0.0.1:8765
+```
+
+Tailscale IP adresini görmek için:
+
+```powershell
+& "C:\Program Files\Tailscale\tailscale.exe" ip -4
+```
+
+### 4) Telefondan aç
+
+Telefonda Tailscale **Connected** durumundayken tarayıcının adres çubuğuna şunu yaz:
+
+```text
+http://<TAILSCALE_IP>:8765
+```
+
+Örnek biçim: `http://100.x.y.z:8765`
+
+> Not: Tarayıcı otomatik olarak `https://` yaparsa çalışmayabilir. Adresi özellikle `http://`
+> ile yaz. Google arama kutusuna değil, tarayıcı adres çubuğuna gir.
+
+### Yayını kapatma
+
+```powershell
+& "C:\Program Files\Tailscale\tailscale.exe" serve --tcp=8765 off
+```
+
+### Güvenlik notları
+
+- README'ye kendi Tailscale IP'ni, cihaz adını, tailnet alan adını veya kişisel profil bilgilerini yazma.
+- `tailscale funnel` kullanma; Funnel dashboard'u internete açık hale getirir.
+- Bilgisayar kapalıysa, Job Bot çalışmıyorsa veya telefonda Tailscale bağlı değilse uzaktan erişim çalışmaz.
+- Dashboard'u başkalarıyla paylaşacaksan önce uygulamaya basit kullanıcı adı/şifre koruması eklemek iyi olur.
+
+---
+
 ## ⚙️ Yapılandırma
 
 **`config.yaml`** (ortak, secret içermez):
