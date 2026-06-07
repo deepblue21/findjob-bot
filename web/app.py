@@ -1,14 +1,17 @@
 """FastAPI web uygulaması — çok profilli dashboard + JSON API."""
+import base64
 from contextlib import asynccontextmanager
 import logging
+import os
 import re
+import secrets
 import threading
 import time
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 import db
@@ -23,6 +26,7 @@ logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
 UPLOAD_ROOT = Path(__file__).resolve().parents[1] / "uploads" / "resumes"
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+AUTH_REALM = "JobBot"
 
 
 @asynccontextmanager
@@ -34,6 +38,44 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Job Bot Dashboard", lifespan=lifespan)
+
+
+def _dashboard_auth_config() -> tuple[str, str]:
+    env = {**scanner._load_dotenv(), **os.environ}
+    username = str(env.get("DASHBOARD_USERNAME", "jobbot") or "jobbot").strip()
+    password = str(env.get("DASHBOARD_PASSWORD", "") or "").strip()
+    if password.startswith("${"):
+        password = ""
+    return username or "jobbot", password
+
+
+def _valid_basic_auth(header: str | None, username: str, password: str) -> bool:
+    if not header or not header.lower().startswith("basic "):
+        return False
+    try:
+        raw = base64.b64decode(header.split(" ", 1)[1], validate=True).decode("utf-8")
+    except Exception:
+        return False
+    supplied_user, sep, supplied_pass = raw.partition(":")
+    if not sep:
+        return False
+    return secrets.compare_digest(supplied_user, username) and secrets.compare_digest(
+        supplied_pass, password
+    )
+
+
+@app.middleware("http")
+async def require_dashboard_auth(request: Request, call_next):
+    username, password = _dashboard_auth_config()
+    if not password:
+        return await call_next(request)
+    if _valid_basic_auth(request.headers.get("authorization"), username, password):
+        return await call_next(request)
+    return PlainTextResponse(
+        "Authentication required",
+        status_code=401,
+        headers={"WWW-Authenticate": f'Basic realm="{AUTH_REALM}"'},
+    )
 
 
 @app.get("/")

@@ -12,7 +12,15 @@ from pathlib import Path
 
 import db
 from models import Job
-from filter_engine import score_job, should_exclude, location_allowed, is_remote_job, relevance_score, tr_norm
+from filter_engine import (
+    score_job,
+    should_exclude,
+    location_allowed,
+    is_remote_job,
+    relevance_score,
+    tr_norm,
+    work_mode_allowed,
+)
 from notifier import notify_jobs, notify_summary
 from profiles import list_profiles, get_profile, profile_scoring
 from scrapers.jobspy_scraper import scrape_jobspy
@@ -120,6 +128,7 @@ def _scan_one_profile(prof: dict, cfg: dict) -> dict:
         logger.info(f"[{name}] Ham toplam: {len(raw_jobs)} ilan")
 
         cities = prof.get("preferred_locations", []) or []
+        allowed_work_modes = prof.get("work_modes", []) or []
         min_store = float(cfg["schedule"].get("min_score_to_store", 1.0))
         min_rel = float(cfg["schedule"].get("min_relevance", 1.0))
         # Rol uygunluğu = beceriler + kişinin ARADIĞI pozisyon terimleri
@@ -139,24 +148,37 @@ def _scan_one_profile(prof: dict, cfg: dict) -> dict:
             for jr in db.get_jobs(profile=key, status="new", min_score=0, limit=2000):
                 _tmp = _J(jr.get("title",""), jr.get("company",""), jr.get("location",""),
                           jr.get("url",""), jr.get("source",""), description=jr.get("description","") or "")
+                _tmp.job_type = jr.get("job_type")
+                _tmp.is_remote = bool(jr.get("is_remote"))
+                _tmp.score = score_job(_tmp, scoring)
                 rel = relevance_score(_tmp, role_weights)
-                if rel < min_rel or not location_allowed(
-                        jr.get("location", ""), cities, jr.get("is_remote")):
+                if (
+                    _tmp.score < min_store
+                    or rel < min_rel
+                    or not work_mode_allowed(_tmp, allowed_work_modes)
+                    or not location_allowed(jr.get("location", ""), cities, jr.get("is_remote"))
+                ):
                     db.delete_job(jr["url_hash"], key)
         except Exception as e:
             logger.warning(f"Temizlik hatasi: {e}")
 
         new_count = 0
-        n_excluded = n_lowscore = n_wrongloc = n_stored = 0
+        n_excluded = n_lowscore = n_lowrel = n_wrongmode = n_wrongloc = n_stored = 0
         for job in raw_jobs:
             if should_exclude(job, exclude_kw):
                 n_excluded += 1
                 continue
             job.score = score_job(job, scoring)        # gösterim/sıralama skoru
-            if relevance_score(job, role_weights) < min_rel:  # rol uygunluğu
+            if job.score < min_store:
                 n_lowscore += 1
                 continue
+            if relevance_score(job, role_weights) < min_rel:  # rol uygunluğu
+                n_lowrel += 1
+                continue
             job.is_remote = is_remote_job(job)  # uzaktan/remote -> is_remote=1
+            if not work_mode_allowed(job, allowed_work_modes):
+                n_wrongmode += 1
+                continue
             if not location_allowed(job.location, cities, job.is_remote):
                 n_wrongloc += 1
                 continue
@@ -166,6 +188,7 @@ def _scan_one_profile(prof: dict, cfg: dict) -> dict:
         logger.info(
             f"[{name}] filtre: ham={len(raw_jobs)} "
             f"elendi(kelime)={n_excluded} dusuk_skor(<{min_store})={n_lowscore} "
+            f"dusuk_rol(<{min_rel})={n_lowrel} yanlis_calisma={n_wrongmode} "
             f"yanlis_konum={n_wrongloc} -> kabul={n_stored} (yeni={new_count})"
         )
 

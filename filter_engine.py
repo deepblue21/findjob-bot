@@ -1,4 +1,11 @@
+from cities import TURKISH_CITIES
 from models import Job
+
+_TR_ASCII = str.maketrans({
+    "ç": "c", "ğ": "g", "ö": "o", "ş": "s", "ü": "u",
+    "Ç": "c", "Ğ": "g", "Ö": "o", "Ş": "s", "Ü": "u",
+    "â": "a", "î": "i", "û": "u", "Â": "a", "Î": "i", "Û": "u",
+})
 
 
 def tr_norm(s: str) -> str:
@@ -7,6 +14,11 @@ def tr_norm(s: str) -> str:
     s = s or ""
     s = s.replace("İ", "i").replace("I", "i").replace("ı", "i")
     return s.lower()
+
+
+def city_norm(s: str) -> str:
+    """Şehir karşılaştırmaları için aksanları da kaldıran normalize."""
+    return tr_norm(s).translate(_TR_ASCII)
 
 
 def score_job(job: Job, scoring_weights: dict) -> float:
@@ -34,6 +46,35 @@ def is_remote_job(job) -> bool:
     return bool(job.is_remote) or "uzaktan" in t or "remote" in t
 
 
+def work_mode(job) -> str:
+    """İlanı uzaktan/hibrit/yerinde olarak sınıflandır."""
+    t = tr_norm(" ".join([job.title or "", job.description or "", job.location or "", job.job_type or ""]))
+    if bool(getattr(job, "is_remote", False)) or "uzaktan" in t or "remote" in t:
+        return "uzaktan"
+    if "hibrit" in t or "hybrid" in t:
+        return "hibrit"
+    return "yerinde"
+
+
+def _norm_work_mode(value: str) -> str:
+    t = tr_norm(value)
+    if "remote" in t or "uzaktan" in t:
+        return "uzaktan"
+    if "hybrid" in t or "hibrit" in t:
+        return "hibrit"
+    if "onsite" in t or "on-site" in t or "yerinde" in t or "is yerinde" in t or "iş yerinde" in t:
+        return "yerinde"
+    return t.strip()
+
+
+def work_mode_allowed(job, allowed_modes: list | None) -> bool:
+    modes = {_norm_work_mode(str(m)) for m in (allowed_modes or []) if str(m).strip()}
+    modes.discard("")
+    if not modes:
+        return True
+    return work_mode(job) in modes
+
+
 def relevance_score(job, role_weights: dict) -> float:
     """Sadece ROL/beceri kelimelerine göre uygunluk (konum ve remote SAYILMAZ).
     Böylece sadece doğru şehirde olması bir işi 'uygun' yapmaz."""
@@ -53,23 +94,17 @@ def location_allowed(location: str, cities: list, is_remote: bool = False) -> bo
       - Konum bilinmiyor/jenerik ("Türkiye", boş)     -> TUT (kaybetme;
         çünkü JobSpy sorgusu zaten şehir-kapsamlı)
     """
-    t = tr_norm(location)
+    t = city_norm(location)
     if is_remote or "uzaktan" in t or "remote" in t:
         return True
     for c in cities or []:
-        if tr_norm(c) in t:
+        if city_norm(c) in t:
             return True
-    # İzin verilenler dışındaki belirgin şehirler -> yerinde ise ele
-    OTHER_CITIES = [
-        "istanbul", "ankara", "bursa", "antalya", "kocaeli", "konya", "adana",
-        "gaziantep", "kayseri", "mersin", "eskisehir", "samsun", "denizli",
-        "sakarya", "tekirdag", "balikesir", "trabzon", "malatya", "kahramanmaras",
-        "van", "diyarbakir", "sanliurfa", "aydin", "mugla", "hatay", "ordu",
-        "afyon", "isparta", "elazig", "tokat", "sivas", "corum", "yozgat",
-        "zonguldak", "edirne", "canakkale", "kibris", "yurt disi",
-    ]
-    for o in OTHER_CITIES:
-        if o in t:
+    # İzin verilenler dışındaki belirgin şehirler -> yerinde ise ele.
+    known_cities = {city_norm(c) for c in TURKISH_CITIES}
+    known_cities.update({"kibris", "yurt disi", "yurtdisi"})
+    for city in known_cities:
+        if city and city in t:
             return False
     # Bilinmeyen / jenerik konum -> tut
     return True

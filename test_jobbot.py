@@ -4,6 +4,7 @@ JOB_BOT test paketi — bağımsız (pytest gerekmez, özel profile gerekmez).
 Çalıştır:  python test_jobbot.py
 Kendi geçici test profilini (profiles/_test.yaml) kurar, scraper'ları mock'lar.
 """
+import base64
 import sys, tempfile, os, shutil
 from pathlib import Path
 if hasattr(sys.stdout, "reconfigure"):
@@ -26,7 +27,7 @@ import notifier as NT
 import scanner as SC
 
 TEST_KEY = "tester"
-_TMP = {"dir": None, "old": None}
+_TMP = {"dir": None, "old": None, "auth_env": {}}
 
 
 def fake_config() -> dict:
@@ -66,12 +67,19 @@ def setup_fixture():
     (_TMP["dir"] / "tester.yaml").write_text(FIXTURE_YAML, encoding="utf-8")
     _TMP["old"] = P.PROFILES_DIR
     P.PROFILES_DIR = _TMP["dir"]   # gerçek profiles/ yerine geçici klasör
+    _TMP["auth_env"] = {k: os.environ.get(k) for k in ("DASHBOARD_USERNAME", "DASHBOARD_PASSWORD")}
+    os.environ["DASHBOARD_PASSWORD"] = ""
 
 def teardown_fixture():
     if _TMP["old"] is not None:
         P.PROFILES_DIR = _TMP["old"]
     if _TMP["dir"]:
         shutil.rmtree(_TMP["dir"], ignore_errors=True)
+    for k, v in (_TMP["auth_env"] or {}).items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
 
 
 def test_filter_engine():
@@ -92,8 +100,12 @@ def test_filter_engine():
     check("location remote TUT", FE.location_allowed("İstanbul", ["İzmir","Manisa"], True))
     check("location İstanbul yerinde AT", not FE.location_allowed("İstanbul", ["İzmir","Manisa"], False))
     check("location Ankara yerinde AT", not FE.location_allowed("Ankara, Türkiye", ["İzmir","Manisa"], False))
+    check("location İzmir izin yoksa AT", not FE.location_allowed("İzmir, Türkiye", ["Ankara"], False))
+    check("location Eskişehir izin yoksa AT", not FE.location_allowed("Eskişehir", ["Ankara"], False))
     check("is_remote_job uzaktan", FE.is_remote_job(Job("t","c","Uzaktan / Remote","u","s")))
     check("is_remote_job yerinde False", not FE.is_remote_job(Job("t","c","İzmir","u","s")))
+    check("work_mode_allowed uzaktan", FE.work_mode_allowed(Job("QA","c","Uzaktan","u","s", is_remote=True), ["uzaktan"]))
+    check("work_mode_allowed yerinde eler", not FE.work_mode_allowed(Job("QA","c","İzmir","u","s"), ["uzaktan"]))
 
 
 def test_db():
@@ -161,6 +173,7 @@ def test_dashboard_ui_contract():
     print("\n[dashboard ui]")
     html = (Path(__file__).parent / "web" / "static" / "index.html").read_text(encoding="utf-8")
     check("aktif filtre özeti var", 'id="filterSummary"' in html)
+    check("odak aksiyon satırı var", 'id="focusbar"' in html and "function renderFocusbar()" in html)
     check("arama temizleme düğmesi var", 'id="clearSearchBtn"' in html)
     check("sekme sayaçları var", 'id="tab-all-count"' in html and 'id="tab-new-count"' in html)
     check("filtreleri temizleme fonksiyonu var", "function clearFilters()" in html)
@@ -254,6 +267,69 @@ def test_scanner_without_telegram_keeps_unnotified():
         os.unlink(p)
 
 
+def test_scanner_store_score_threshold():
+    print("\n[scanner min_score_to_store]")
+    p = tempfile.mktemp(suffix=".db")
+    DB.configure(p)
+    fake = [
+        Job("QA","Low","Türkiye","u_low_store","indeed",description="qa"),
+        Job("QA Test Mühendisi","High","Uzaktan","u_high_store","indeed",description="selenium uzaktan"),
+    ]
+    o = (SC.scrape_jobspy, SC.scrape_kariyer, SC.scrape_rss_feeds, SC.notify_jobs, SC.notify_summary)
+    SC.scrape_jobspy = lambda *a, **k: fake
+    SC.scrape_kariyer = lambda *a, **k: []
+    SC.scrape_rss_feeds = lambda *a, **k: []
+    SC.notify_jobs = lambda *a, **k: None
+    SC.notify_summary = lambda *a, **k: None
+    cfg = fake_config()
+    cfg["schedule"]["min_score_to_store"] = 5
+    try:
+        SC.run_scan(cfg=cfg, profile_key=TEST_KEY)
+        titles = [r["title"] for r in DB.get_jobs(profile=TEST_KEY, min_score=0)]
+        check("düşük saklama skoru elendi", "QA" not in titles)
+        check("yüksek skor saklandı", "QA Test Mühendisi" in titles)
+    finally:
+        SC.scrape_jobspy, SC.scrape_kariyer, SC.scrape_rss_feeds, SC.notify_jobs, SC.notify_summary = o
+        os.unlink(p)
+
+
+def test_scanner_work_modes():
+    print("\n[scanner work_modes]")
+    key = "remoteonly"
+    fx = P.PROFILES_DIR / f"{key}.yaml"
+    fx.write_text(
+        'key: "remoteonly"\norder: 97\nname: "Remote Only"\ntitle: "QA"\n'
+        'preferred_locations: ["İzmir"]\nwork_modes: ["uzaktan"]\nskill_weight: 2\n'
+        'skills: ["qa"]\nsearch:\n  jobspy_queries:\n'
+        '    - { term: "QA", sites: ["indeed"], location: "Turkey", country_indeed: "Turkey" }\n',
+        encoding="utf-8",
+    )
+    p = tempfile.mktemp(suffix=".db")
+    DB.configure(p)
+    fake = [
+        Job("QA Engineer","RemoteCo","Uzaktan","u_remote_mode","indeed",description="qa remote"),
+        Job("QA Engineer","OfficeCo","İzmir","u_office_mode","indeed",description="qa"),
+    ]
+    o = (SC.scrape_jobspy, SC.scrape_kariyer, SC.scrape_rss_feeds, SC.notify_jobs, SC.notify_summary)
+    SC.scrape_jobspy = lambda *a, **k: fake
+    SC.scrape_kariyer = lambda *a, **k: []
+    SC.scrape_rss_feeds = lambda *a, **k: []
+    SC.notify_jobs = lambda *a, **k: None
+    SC.notify_summary = lambda *a, **k: None
+    cfg = fake_config()
+    cfg["schedule"]["min_score_to_store"] = 0
+    try:
+        SC.run_scan(cfg=cfg, profile_key=key)
+        companies = [r["company"] for r in DB.get_jobs(profile=key, min_score=0)]
+        check("uzaktan ilan tutuldu", "RemoteCo" in companies)
+        check("yerinde ilan work_modes ile elendi", "OfficeCo" not in companies)
+    finally:
+        SC.scrape_jobspy, SC.scrape_kariyer, SC.scrape_rss_feeds, SC.notify_jobs, SC.notify_summary = o
+        os.unlink(p)
+        try: fx.unlink()
+        except OSError: pass
+
+
 def test_location_priority():
     print("\n[konum önceliği — ilk şehir üstte]")
     key = "manisatest"
@@ -316,6 +392,43 @@ def test_web_api():
         check("/api/scan/status", "running" in g("/api/scan/status"))
     finally:
         srv.should_exit = True; os.unlink(p)
+
+
+def test_dashboard_auth():
+    print("\n[dashboard auth]")
+    import threading, time, urllib.error, urllib.request, uvicorn
+
+    old_user = os.environ.get("DASHBOARD_USERNAME")
+    old_pass = os.environ.get("DASHBOARD_PASSWORD")
+    os.environ["DASHBOARD_USERNAME"] = "tester"
+    os.environ["DASHBOARD_PASSWORD"] = "secret"
+    from web.app import app
+    cfg = uvicorn.Config(app, host="127.0.0.1", port=8811, log_level="error")
+    srv = uvicorn.Server(cfg)
+    threading.Thread(target=srv.run, daemon=True).start(); time.sleep(2.0)
+    op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        status = None
+        try:
+            op.open("http://127.0.0.1:8811/", timeout=6)
+        except urllib.error.HTTPError as e:
+            status = e.code
+        check("şifresiz 401", status == 401)
+
+        token = base64.b64encode(b"tester:secret").decode("ascii")
+        req = urllib.request.Request("http://127.0.0.1:8811/")
+        req.add_header("Authorization", "Basic " + token)
+        check("şifreli 200", op.open(req, timeout=6).status == 200)
+    finally:
+        srv.should_exit = True
+        if old_user is None:
+            os.environ.pop("DASHBOARD_USERNAME", None)
+        else:
+            os.environ["DASHBOARD_USERNAME"] = old_user
+        if old_pass is None:
+            os.environ.pop("DASHBOARD_PASSWORD", None)
+        else:
+            os.environ["DASHBOARD_PASSWORD"] = old_pass
 
 
 def test_resume_analyzer():
@@ -406,7 +519,8 @@ if __name__ == "__main__":
     try:
         for t in [test_filter_engine, test_db, test_db_general_filters, test_profiles, test_dashboard_ui_contract, test_cover_letter,
                   test_notifier, test_scanner_pipeline, test_scanner_without_telegram_keeps_unnotified,
-                  test_location_priority, test_web_api, test_resume_analyzer, test_upload_api]:
+                  test_scanner_store_score_threshold, test_scanner_work_modes,
+                  test_location_priority, test_web_api, test_dashboard_auth, test_resume_analyzer, test_upload_api]:
             try: t()
             except Exception as e:
                 FAIL += 1; FAILS.append(t.__name__+" (exception)")

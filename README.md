@@ -84,6 +84,18 @@ Tarayıcıda: **http://localhost:8765**
 - Botun sana yazabilmesi için önce bota **/start** gönder.
 - Telegram bilgileri yoksa uygulama kapanmaz; sadece bildirim göndermez.
 
+### Dashboard şifresi (önerilir)
+
+Tailscale kullansan bile dashboard kişisel profil ve başvuru verisi içerdiği için basit şifre
+koruması açman önerilir. `.env` içine şunları ekle:
+
+```env
+DASHBOARD_USERNAME=jobbot
+DASHBOARD_PASSWORD=guclu-bir-sifre-yaz
+```
+
+`DASHBOARD_PASSWORD` boşsa şifre koruması kapalı kalır. Şifreyi repoya commit etme.
+
 ### Kişisel Dosya Güvenliği
 - Kişisel `.env`, `profiles/*.yaml`, PDF/CV dosyaları, veritabanları ve yüklemeler gitignore kapsamındadır.
 - CV/PDF dosyalarını repoya commit etme. Profili `profiles/ben.yaml` içinde YAML olarak özetle.
@@ -160,6 +172,27 @@ http://<TAILSCALE_IP>:8765
 & "C:\Program Files\Tailscale\tailscale.exe" serve --tcp=8765 off
 ```
 
+### Windows'ta otomatik başlatma
+
+PC açıldığında Job Bot ve Tailscale Serve otomatik başlasın istiyorsan PowerShell'i yönetici
+olarak açıp repo kökünde çalıştır:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install_windows_startup.ps1
+```
+
+Hemen denemek için:
+
+```powershell
+Start-ScheduledTask -TaskName "JobBot Dashboard"
+```
+
+Kaldırmak için:
+
+```powershell
+Unregister-ScheduledTask -TaskName "JobBot Dashboard" -Confirm:$false
+```
+
 ### Güvenlik notları
 
 - README'ye kendi Tailscale IP'ni, cihaz adını, tailnet alan adını veya kişisel profil bilgilerini yazma.
@@ -178,9 +211,10 @@ http://<TAILSCALE_IP>:8765
 - `scoring` — ortak puanlama (çalışma şekli/seviye); konum önceliği profilden gelir
 - `filters.exclude_keywords` — tüm profillerde ortak eleme
 - `database.path` — SQLite yolu
+- `.env` içindeki `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` — opsiyonel dashboard şifresi
 
 **`profiles/<kişi>.yaml`** (kişiye özel): kimlik, `skills`, `preferred_locations`,
-`search.jobspy_queries` / `kariyer_queries`, `exclude_keywords`.
+`work_modes`, `search.jobspy_queries` / `kariyer_queries`, `exclude_keywords`.
 Beceriler puanlamaya otomatik eklenir.
 
 ---
