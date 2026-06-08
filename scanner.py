@@ -70,7 +70,9 @@ def telegram_ready(tg: dict | None) -> bool:
     return bool(token and chat_id and not token.startswith("${") and not chat_id.startswith("${"))
 
 
-def _scan_one_profile(prof: dict, cfg: dict) -> dict:
+def _scan_one_profile(
+    prof: dict, cfg: dict, blocked_sources: set[str] | None = None
+) -> dict:
     """Tek bir kişi (profil) için tarama."""
     key = prof.get("key", "")
     name = prof.get("name", key)
@@ -95,6 +97,7 @@ def _scan_one_profile(prof: dict, cfg: dict) -> dict:
 
     scan_id = db.start_scan(key)
     raw_jobs: list[Job] = []
+    blocked_sources = blocked_sources if blocked_sources is not None else set()
     try:
         logger.info("=" * 50)
         logger.info(f"🔍 Tarama başladı — 👤 {name}")
@@ -110,20 +113,48 @@ def _scan_one_profile(prof: dict, cfg: dict) -> dict:
         # JobSpy (Indeed / Google / LinkedIn)
         if search.get("jobspy_queries"):
             try:
-                raw_jobs.extend(scrape_jobspy(
+                jobspy_jobs = scrape_jobspy(
                     queries=search["jobspy_queries"],
                     hours_old=search.get("hours_old", 168),
                     results_wanted=search.get("results_wanted", 25),
-                ))
+                )
+                raw_jobs.extend(jobspy_jobs)
+                db.set_source_health("jobspy", "ok", f"{len(jobspy_jobs)} ilan cekildi")
             except Exception as e:
                 logger.error(f"JobSpy hatası: {e}")
+                db.set_source_health("jobspy", "error", str(e))
 
         # Kariyer.net
         if search.get("kariyer_queries"):
-            try:
-                raw_jobs.extend(scrape_kariyer(search["kariyer_queries"]))
-            except Exception as e:
-                logger.error(f"Kariyer hatası: {e}")
+            if "kariyer.net" in blocked_sources:
+                msg = "Bu taramada daha once 403 alindi; Kariyer sorgulari atlandi"
+                logger.info(f"[Kariyer] {msg}.")
+                db.set_source_health("kariyer.net", "blocked", msg)
+            else:
+                try:
+                    kariyer_result = scrape_kariyer(
+                        search["kariyer_queries"], return_status=True
+                    )
+                    if isinstance(kariyer_result, tuple):
+                        kariyer_jobs, health = kariyer_result
+                    else:
+                        kariyer_jobs = kariyer_result
+                        health = {
+                            "source": "kariyer.net",
+                            "status": "ok",
+                            "message": f"{len(kariyer_jobs)} ilan cekildi",
+                        }
+                    raw_jobs.extend(kariyer_jobs)
+                    db.set_source_health(
+                        health.get("source", "kariyer.net"),
+                        health.get("status", "unknown"),
+                        health.get("message", ""),
+                    )
+                    if health.get("status") == "blocked":
+                        blocked_sources.add("kariyer.net")
+                except Exception as e:
+                    logger.error(f"Kariyer hatası: {e}")
+                    db.set_source_health("kariyer.net", "error", str(e))
 
         logger.info(f"[{name}] Ham toplam: {len(raw_jobs)} ilan")
 
@@ -237,7 +268,8 @@ def run_scan(cfg: dict | None = None, profile_key: str | None = None) -> dict:
             logger.warning("Profil bulunamadı (profiles/ klasörü boş?).")
             return {"error": "profil yok"}
 
-        results = [_scan_one_profile(p, cfg) for p in profiles]
+        blocked_sources: set[str] = set()
+        results = [_scan_one_profile(p, cfg, blocked_sources) for p in profiles]
 
         # Tarama bitince Telegram'a özet rapor
         try:

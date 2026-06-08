@@ -160,6 +160,12 @@
   .subbar .srcs{display:flex;flex-wrap:wrap;gap:6px}
   .subbar .src-chip{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:#fff;border:1px solid var(--border);color:var(--muted);display:flex;align-items:center;gap:6px}
   .subbar .src-chip::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green)}
+  .subbar .src-chip.ok::before{background:var(--green)}
+  .subbar .src-chip.blocked{color:var(--amber);border-color:rgba(217,119,6,.28);background:var(--amber-soft)}
+  .subbar .src-chip.blocked::before{background:var(--amber)}
+  .subbar .src-chip.error{color:var(--rose);border-color:rgba(225,29,72,.26);background:var(--rose-soft)}
+  .subbar .src-chip.error::before{background:var(--rose)}
+  .subbar .src-chip.unknown::before{background:var(--muted-2)}
 
   .resume-panel{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:16px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:15px 17px;margin:0 0 16px;box-shadow:var(--shadow-sm)}
   .resume-copy{display:flex;align-items:center;gap:13px;min-width:0}
@@ -571,6 +577,7 @@ const API = "";
 let state = { profile:"", status:"all", source:"all", city:"all", work_mode:"all", days:"all", min_score:0, remote_only:false, search:"", sort:"score" };
 let scanTimer = null, PROFILES = [], CLIENT_JOBS = [], VIEW_JOBS = [], CUR_KEYWORDS = [];
 let FILTER_CITIES = [];
+let SOURCE_HEALTH = {};
 let QUICK = "all", SEL = -1;
 let LAST_STATUS = null, toastTimer = null;
 
@@ -632,10 +639,24 @@ async function loadProfiles(){
   renderSubbar();
 }
 function setCurKeywords(){ const p=PROFILES.find(x=>x.key===state.profile)||{}; CUR_KEYWORDS=(p.keywords||[]).map(k=>String(k).toLowerCase()); }
+function sourceHealthClass(status){ return ["ok","blocked","error","unknown"].includes(status)?status:"unknown"; }
+async function loadSourceHealth(){
+  try{
+    const data=await (await fetch(API+"/api/source-health")).json();
+    SOURCE_HEALTH={};
+    (data.sources||[]).forEach(s=>{ SOURCE_HEALTH[s.source]=s; });
+  }catch(e){ SOURCE_HEALTH={}; }
+}
 function renderSubbar(){
   const p=PROFILES.find(x=>x.key===state.profile)||{};
-  const srcs=["Kariyer.net","Indeed","Google","LinkedIn"];
-  document.getElementById("subbar").innerHTML=`<span class="who">Aktif: <b>${esc(p.name||'—')}</b></span><span class="sep"></span><span>${esc(p.title||'')}</span><span class="sep"></span><span class="srcs">`+srcs.map(s=>`<span class="src-chip">${s}</span>`).join('')+`</span>`;
+  const srcs=[{key:"jobspy",label:"JobSpy"},{key:"kariyer.net",label:"Kariyer.net"}];
+  const chips=srcs.map(s=>{
+    const h=SOURCE_HEALTH[s.key]||{status:"unknown",message:"Henuz taranmadi"};
+    const cls=sourceHealthClass(h.status);
+    const title=h.message?` title="${esc(h.message)}"`:"";
+    return `<span class="src-chip ${cls}"${title}>${esc(h.label||s.label)}</span>`;
+  }).join('');
+  document.getElementById("subbar").innerHTML=`<span class="who">Aktif: <b>${esc(p.name||'—')}</b></span><span class="sep"></span><span>${esc(p.title||'')}</span><span class="sep"></span><span class="srcs">${chips}</span>`;
 }
 async function switchProfile(key){ if(key===state.profile) return; state.profile=key; setCurKeywords(); QUICK="all"; LAST_STATUS=null; document.querySelectorAll(".pf-btn").forEach(b=>b.classList.toggle("active",b.dataset.key===key)); renderSubbar(); await loadUploads(); await loadStats(); await loadJobs(); }
 
@@ -720,6 +741,7 @@ function renderTabCounts(s){
   Object.entries(counts).forEach(([k,v])=>{ const el=document.getElementById(`tab-${k}-count`); if(el) el.textContent=v; });
 }
 async function loadStats(){
+  await loadSourceHealth(); renderSubbar();
   const s=await (await fetch(API+"/api/stats?profile="+encodeURIComponent(state.profile))).json();
   animateNum(document.getElementById("st-total"),s.total);
   animateNum(document.getElementById("st-new"),s.new);
@@ -927,7 +949,7 @@ async function triggerScan(){
   toast("Tarama başlatıldı"+(who?` — ${who}`:"")+"…"); setScanning(true); pollScan();
 }
 function setScanning(on){ const b=document.getElementById("scanBtn"); b.classList.toggle("scanning",on); b.disabled=on; document.getElementById("scanLabel").textContent=on?"Taranıyor…":"Şimdi Tara"; }
-function pollScan(){ clearInterval(scanTimer); scanTimer=setInterval(async()=>{ const s=await (await fetch(API+"/api/scan/status")).json(); if(!s.running){ clearInterval(scanTimer); setScanning(false); toast("Tarama tamamlandı ✓"); await loadStats(); await loadJobs(); } },3000); }
+function pollScan(){ clearInterval(scanTimer); scanTimer=setInterval(async()=>{ const s=await (await fetch(API+"/api/scan/status")).json(); if(!s.running){ clearInterval(scanTimer); setScanning(false); toast("Tarama tamamlandı ✓"); await loadSourceHealth(); renderSubbar(); await loadStats(); await loadJobs(); } },3000); }
 
 // ── filtreler ──
 function setTab(status){ document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.dataset.status===status)); state.status=status; loadJobs(); }
@@ -984,7 +1006,7 @@ document.addEventListener("keydown",e=>{
 // ── init ──
 (async()=>{
   buildThemeMenu();
-  await loadFilterOptions(); await loadProfiles(); await loadUploads(); await loadStats(); await loadJobs();
+  await loadFilterOptions(); await loadSourceHealth(); await loadProfiles(); await loadUploads(); await loadStats(); await loadJobs();
   if((await (await fetch(API+"/api/scan/status")).json()).running){ setScanning(true); pollScan(); }
   setInterval(loadStats,30000);
 })();

@@ -69,6 +69,10 @@ def test_filter_and_status_contract(src: str) -> None:
         ("function clearFilters()", "filtre temizleme fonksiyonu"),
         ("function undoStatus()", "durum geri alma fonksiyonu"),
         ('label:"Geri al"', "toast geri alma aksiyonu"),
+        ("function loadSourceHealth()", "kaynak sagligi yukleme fonksiyonu"),
+        ("/api/source-health", "kaynak sagligi API baglantisi"),
+        (".src-chip.blocked", "kaynak engelli durum stili"),
+        ("SOURCE_HEALTH", "kaynak sagligi state'i"),
     ]
     for needle, label in required:
         check(label, needle in src)

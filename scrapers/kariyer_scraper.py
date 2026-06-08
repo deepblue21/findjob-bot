@@ -201,19 +201,41 @@ def _to_job(item: dict) -> Job | None:
     )
 
 
-def scrape_kariyer(queries: list[str]) -> list[Job]:
+def scrape_kariyer(queries: list[str], return_status: bool = False) -> list[Job] | tuple[list[Job], dict]:
     session = make_session()
     all_jobs: list[Job] = []
     seen: set[str] = set()
+    health = {
+        "source": "kariyer.net",
+        "status": "unknown",
+        "message": "Henuz taranmadi",
+    }
+    ok_requests = 0
 
     for query in queries:
         url = _build_url(query)
         logger.info(f"[Kariyer] '{query}' -> {url}")
-        resp = get_with_retry(session, url, max_retries=3, base_delay=3.0)
+        resp, status_code = get_with_retry(
+            session, url, max_retries=3, base_delay=3.0, return_status=True
+        )
         if not resp:
+            if status_code == 403:
+                health = {
+                    "source": "kariyer.net",
+                    "status": "blocked",
+                    "message": "403 erisim engeli; bu taramada kalan Kariyer sorgulari atlandi",
+                }
+                logger.warning("[Kariyer] 403 erisim engeli; kalan sorgular atlandi.")
+                break
+            health = {
+                "source": "kariyer.net",
+                "status": "error",
+                "message": f"'{query}' alinamadi",
+            }
             logger.warning(f"[Kariyer] '{query}' alinamadi.")
             polite_delay(5, 9)
             continue
+        ok_requests += 1
 
         nd_items = _extract_next_data(resp.text)
         if nd_items:
@@ -229,4 +251,20 @@ def scrape_kariyer(queries: list[str]) -> list[Job]:
         logger.info(f"[Kariyer] '{query}': {found} ilan ({method}).")
         polite_delay(5, 10)
 
+    if health["status"] != "blocked":
+        if ok_requests:
+            health = {
+                "source": "kariyer.net",
+                "status": "ok",
+                "message": f"{len(all_jobs)} ilan cekildi",
+            }
+        elif health["status"] == "unknown":
+            health = {
+                "source": "kariyer.net",
+                "status": "error",
+                "message": "Kariyer sorgularindan sonuc alinamadi",
+            }
+
+    if return_status:
+        return all_jobs, health
     return all_jobs

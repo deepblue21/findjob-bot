@@ -10,6 +10,10 @@ from cities import city_variants
 from models import Job
 
 _DB_PATH: Path | None = None
+_SOURCE_HEALTH_DEFAULTS = {
+    "jobspy": "JobSpy",
+    "kariyer.net": "Kariyer.net",
+}
 
 
 def configure(db_path: str) -> None:
@@ -69,6 +73,13 @@ def init_db() -> None:
                 new_count     INTEGER DEFAULT 0,
                 matched_count INTEGER DEFAULT 0,
                 status        TEXT DEFAULT 'running'
+            );
+
+            CREATE TABLE IF NOT EXISTS source_health (
+                source      TEXT PRIMARY KEY,
+                status      TEXT DEFAULT 'unknown',
+                message     TEXT DEFAULT '',
+                checked_at  TEXT DEFAULT (datetime('now','localtime'))
             );
 
             CREATE INDEX IF NOT EXISTS idx_jobs_status  ON jobs(status);
@@ -245,6 +256,56 @@ def get_stats(profile=None) -> dict:
             "by_source": {r["source"]: r["c"] for r in sources},
             "last_scan": dict(last_scan) if last_scan else None,
         }
+
+
+# -- Kaynak sagligi ------------------------------------------------------------
+
+def set_source_health(source: str, status: str, message: str = "") -> None:
+    source = (source or "").strip().lower()
+    if not source:
+        return
+    if status not in {"ok", "blocked", "error", "unknown"}:
+        status = "unknown"
+    message = (message or "").strip()[:260]
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO source_health (source, status, message, checked_at)
+            VALUES (?, ?, ?, datetime('now','localtime'))
+            ON CONFLICT(source) DO UPDATE SET
+                status = excluded.status,
+                message = excluded.message,
+                checked_at = excluded.checked_at
+            """,
+            (source[:80], status, message),
+        )
+
+
+def get_source_health() -> list[dict]:
+    with get_conn() as conn:
+        rows = {
+            r["source"]: dict(r)
+            for r in conn.execute(
+                "SELECT source, status, message, checked_at FROM source_health"
+            ).fetchall()
+        }
+
+    out = []
+    for source, label in _SOURCE_HEALTH_DEFAULTS.items():
+        item = rows.pop(source, None) or {
+            "source": source,
+            "status": "unknown",
+            "message": "Henuz taranmadi",
+            "checked_at": None,
+        }
+        item["label"] = label
+        out.append(item)
+
+    for source in sorted(rows):
+        item = rows[source]
+        item["label"] = source
+        out.append(item)
+    return out
 
 
 # -- Telegram bildirim takibi --------------------------------------------------

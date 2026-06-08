@@ -127,6 +127,11 @@ def api_stats(profile: str = Query("all")):
     return db.get_stats(profile=profile)
 
 
+@app.get("/api/source-health")
+def api_source_health():
+    return {"sources": db.get_source_health()}
+
+
 @app.get("/api/jobs")
 def api_jobs(
     profile: str = Query("all"),

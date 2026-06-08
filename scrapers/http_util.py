@@ -38,7 +38,8 @@ def get_with_retry(
     max_retries: int = 3,
     base_delay: float = 2.0,
     timeout: int = 20,
-) -> requests.Response | None:
+    return_status: bool = False,
+) -> requests.Response | None | tuple[requests.Response | None, int | None]:
     """
     GET isteği at, 429/5xx durumunda exponential backoff ile tekrar dene.
     Başarısızsa None döner.
@@ -50,7 +51,7 @@ def get_with_retry(
             resp = session.get(url, params=params, timeout=timeout)
 
             if resp.status_code == 200:
-                return resp
+                return (resp, resp.status_code) if return_status else resp
 
             if resp.status_code == 429:
                 wait = base_delay * (2 ** attempt) + random.uniform(1, 4)
@@ -60,7 +61,7 @@ def get_with_retry(
 
             if resp.status_code == 403:
                 logger.warning(f"403 erişim engeli: {url}")
-                return None
+                return (None, resp.status_code) if return_status else None
 
             if 500 <= resp.status_code < 600:
                 wait = base_delay * (2 ** attempt)
@@ -69,7 +70,7 @@ def get_with_retry(
                 continue
 
             logger.warning(f"Beklenmeyen durum {resp.status_code}: {url}")
-            return None
+            return (None, resp.status_code) if return_status else None
 
         except requests.exceptions.Timeout:
             wait = base_delay * (2 ** attempt)
@@ -80,7 +81,7 @@ def get_with_retry(
             time.sleep(base_delay * (2 ** attempt))
 
     logger.error(f"{max_retries} deneme başarısız: {url}")
-    return None
+    return (None, None) if return_status else None
 
 
 def polite_delay(min_s: float = 3.0, max_s: float = 7.0) -> None:

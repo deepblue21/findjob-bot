@@ -128,6 +128,11 @@ def test_db():
     st = DB.get_stats("a")
     check("get_stats total", st["total"]==1)
     check("get_stats saved", st["saved"]==1)
+    DB.set_source_health("kariyer.net", "blocked", "403")
+    health = {x["source"]: x for x in DB.get_source_health()}
+    check("source health varsayilan jobspy", health["jobspy"]["status"]=="unknown")
+    check("source health blocked", health["kariyer.net"]["status"]=="blocked")
+    check("source health mesaj", health["kariyer.net"]["message"]=="403")
     un = DB.get_unnotified(3.0, "b")
     check("get_unnotified döner Job", len(un)==1 and hasattr(un[0],"title"))
     DB.mark_notified([DB.get_jobs(profile="b")[0]["url_hash"]], "b")
@@ -179,6 +184,7 @@ def test_dashboard_ui_contract():
     check("filtreleri temizleme fonksiyonu var", "function clearFilters()" in html)
     check("filtre özeti render fonksiyonu var", "function renderFilterSummary()" in html)
     check("durum geri alma fonksiyonu var", "function undoStatus()" in html)
+    check("kaynak sagligi UI var", "function loadSourceHealth()" in html and "/api/source-health" in html)
     check("siyah terminal tema var", 'id:"black"' in html and 'data-theme="black"' in html and "#c6f035" in html and "#4fe0c5" in html)
 
 
@@ -370,6 +376,7 @@ def test_web_api():
     p = tempfile.mktemp(suffix=".db")
     DB.configure(p)
     DB.upsert_job(Job("QA Test","A","İzmir","https://x/1","indeed",score=8,is_remote=True), TEST_KEY)
+    DB.set_source_health("kariyer.net", "blocked", "403")
     from web.app import app
     cfg = uvicorn.Config(app, host="127.0.0.1", port=8809, log_level="error")
     srv = uvicorn.Server(cfg)
@@ -390,6 +397,8 @@ def test_web_api():
         check("/api/application", "cover_letter" in g(f"/api/jobs/{h}/application?profile="+TEST_KEY))
         check("/api/status ok", post(f"/api/jobs/{h}/status?status=saved&profile="+TEST_KEY).get("ok") is True)
         check("/api/scan/status", "running" in g("/api/scan/status"))
+        sh = g("/api/source-health")["sources"]
+        check("/api/source-health", any(x["source"]=="kariyer.net" and x["status"]=="blocked" for x in sh))
     finally:
         srv.should_exit = True; os.unlink(p)
 
