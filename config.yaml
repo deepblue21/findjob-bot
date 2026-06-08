@@ -9,6 +9,9 @@ schedule:
   min_score_to_store: 1.0     # dashboard'a kaydetme eşiği
   min_relevance: 1.0          # bir ilan en az bu kadar ROL/arama-terimi uyumu içermezse alınmaz
 
+sources:
+  kariyer_block_cooldown_hours: 6  # Kariyer 403 verirse tekrar denemeden önce beklenecek süre
+
 # Tüm profillerde ORTAK puanlama (çalışma şekli / seviye).
 # Konum önceliği ve kişiye özel beceriler profiles/*.yaml içinden otomatik eklenir.
 scoring:

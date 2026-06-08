@@ -20,6 +20,7 @@ Kaynaklar: **Kariyer.net · Indeed · Google Jobs · LinkedIn** (uluslararası r
 - **Telegram:** ayarlanırsa eşleşen ilanları kişi adıyla bildirir; ayarlanmazsa dashboard çalışmaya devam eder.
 - **Dedup:** aynı ilan iki kez bildirilmez. **Otomatik tarama:** her N saatte tüm profiller.
 - **Dashboard:** skor rozetleri, çalışma şekli (uzaktan/hibrit/yerinde) rozetleri, kaynak/skor/remote filtreleri, durum sekmeleri, anlık SCAN NOW.
+- **Kaynak sağlığı:** JobSpy / Kariyer.net durumunu gösterir; erişim engeli varsa tarama devam eder ve kaynak daha seyrek yeniden denenir.
 
 ---
 
@@ -209,6 +210,7 @@ Unregister-ScheduledTask -TaskName "JobBot Dashboard" -Confirm:$false
 - `schedule.min_score_to_notify` — Telegram eşiği
 - `schedule.min_score_to_store` — bu skorun altı hiç kaydedilmez
 - `scoring` — ortak puanlama (çalışma şekli/seviye); konum önceliği profilden gelir
+- `sources.kariyer_block_cooldown_hours` — Kariyer.net 403 verirse tekrar denemeden önce beklenecek süre
 - `filters.exclude_keywords` — tüm profillerde ortak eleme
 - `database.path` — SQLite yolu
 - `.env` içindeki `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` — opsiyonel dashboard şifresi
@@ -241,6 +243,22 @@ Telegram ayarlıysa yalnızca skoru `min_score_to_notify` üstü ilanlar gönder
 
 Sağ üstteki tema menüsünde açık, koyu, siyah terminal ve renkli temalar bulunur; seçim tarayıcıda saklanır. Arayüz kart tabanlı düzen, çalışma-şekli rozetleri (uzaktan/hibrit/yerinde), skor renkleri, aktif filtre özeti ve ön yazı modalı içerir.
 
+## Kaynak Sağlığı ve Kariyer.net 403
+
+Kariyer.net daha önce çalışırken sonradan `403 erişim engeli` döndürmeye başlayabilir. Bu genelde botun kodunun bozulmasından değil, Kariyer.net tarafındaki koruma katmanının düz HTTP isteklerini geçici veya kalıcı olarak reddetmesinden kaynaklanır.
+
+Bot bu durumda:
+- Kariyer.net için kalan sorguları o taramada atlar.
+- Aynı taramadaki diğer profillerde Kariyer.net'i yeniden zorlamaz.
+- Dashboard'da Kariyer.net'i `blocked`, JobSpy'ı `ok` gibi gösterir.
+- `sources.kariyer_block_cooldown_hours` süresi dolana kadar Kariyer.net'i tekrar denemez; süre dolunca yeniden dener.
+
+Yapılabilir güvenli seçenekler:
+- JobSpy kaynaklarını (Indeed / Google / LinkedIn) ana kaynak olarak kullanmak.
+- Kariyer engeli geçiciyse cooldown sonrası yeniden denemek.
+- Kariyer tarafı sürekli 403 veriyorsa `kariyer_queries` listesini boşaltıp o kaynağı pratikte kapatmak.
+- Site girişini, captcha'yı veya koruma katmanını otomatik aşmaya çalışmamak; bu kırılgan ve kullanım şartları açısından riskli bir yoldur.
+
 ## 🧪 Testler
 
 ```bash
@@ -252,7 +270,7 @@ Testler GitHub Actions ile push ve pull request'lerde otomatik koşar (`.github/
 
 ## 🛡️ Bot Engeli Stratejisi
 
-429/5xx'te exponential backoff + retry, her istekte rotating User-Agent, sorgular arası random delay, URL-hash bazlı dedup. Kariyer.net scraper'ı yapıdan bağımsızdır (`__NEXT_DATA__` JSON, bulamazsa HTML fallback).
+429/5xx'te exponential backoff + retry, her istekte rotating User-Agent, sorgular arası random delay, URL-hash bazlı dedup. Kariyer.net scraper'ı yapıdan bağımsızdır (`__NEXT_DATA__` JSON, bulamazsa HTML fallback). Kariyer.net `403` döndürürse kaynak `blocked` işaretlenir ve `sources.kariyer_block_cooldown_hours` kadar beklenir.
 
 ---
 

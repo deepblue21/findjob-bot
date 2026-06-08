@@ -166,6 +166,14 @@
   .subbar .src-chip.error{color:var(--rose);border-color:rgba(225,29,72,.26);background:var(--rose-soft)}
   .subbar .src-chip.error::before{background:var(--rose)}
   .subbar .src-chip.unknown::before{background:var(--muted-2)}
+  .source-health-note{display:none;align-items:flex-start;gap:11px;margin:0 0 16px;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow-sm);color:var(--text-2)}
+  .source-health-note.show{display:flex}
+  .source-health-note.blocked{border-color:rgba(217,119,6,.26);background:var(--amber-soft)}
+  .source-health-note.error{border-color:rgba(225,29,72,.24);background:var(--rose-soft)}
+  .source-health-dot{width:9px;height:9px;border-radius:50%;background:var(--amber);margin-top:5px;flex:none}
+  .source-health-note.error .source-health-dot{background:var(--rose)}
+  .source-health-note b{display:block;font-size:12.5px;color:var(--text);margin-bottom:2px}
+  .source-health-note small{display:block;font-size:12px;line-height:1.45;color:var(--muted)}
 
   .resume-panel{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:16px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:15px 17px;margin:0 0 16px;box-shadow:var(--shadow-sm)}
   .resume-copy{display:flex;align-items:center;gap:13px;min-width:0}
@@ -430,6 +438,8 @@
 <div class="subbar" id="subbar"></div>
 
 <div class="wrap">
+  <div class="source-health-note" id="sourceHealthNote"></div>
+
   <section class="resume-panel" id="resumePanel" aria-label="CV PDF yükleme">
     <div class="resume-copy">
       <div class="resume-icon">PDF</div>
@@ -647,6 +657,19 @@ async function loadSourceHealth(){
     (data.sources||[]).forEach(s=>{ SOURCE_HEALTH[s.source]=s; });
   }catch(e){ SOURCE_HEALTH={}; }
 }
+function renderSourceHealthNote(){
+  const box=document.getElementById("sourceHealthNote");
+  if(!box) return;
+  const kariyer=SOURCE_HEALTH["kariyer.net"];
+  if(!kariyer || !["blocked","error"].includes(kariyer.status)){
+    box.className="source-health-note"; box.innerHTML=""; return;
+  }
+  const jobspy=SOURCE_HEALTH["jobspy"]||{};
+  const title=kariyer.status==="blocked"?"Kariyer.net erisim engeli":"Kariyer.net kaynak hatasi";
+  const helper=jobspy.status==="ok"?"JobSpy aktif; tarama devam ediyor.":"Diger kaynaklar deneniyor.";
+  box.className=`source-health-note show ${sourceHealthClass(kariyer.status)}`;
+  box.innerHTML=`<span class="source-health-dot"></span><span><b>${title}</b><small>${esc(kariyer.message||"Kariyer.net su anda ilan dondurmuyor.")} · ${helper}</small></span>`;
+}
 function renderSubbar(){
   const p=PROFILES.find(x=>x.key===state.profile)||{};
   const srcs=[{key:"jobspy",label:"JobSpy"},{key:"kariyer.net",label:"Kariyer.net"}];
@@ -657,6 +680,7 @@ function renderSubbar(){
     return `<span class="src-chip ${cls}"${title}>${esc(h.label||s.label)}</span>`;
   }).join('');
   document.getElementById("subbar").innerHTML=`<span class="who">Aktif: <b>${esc(p.name||'—')}</b></span><span class="sep"></span><span>${esc(p.title||'')}</span><span class="sep"></span><span class="srcs">${chips}</span>`;
+  renderSourceHealthNote();
 }
 async function switchProfile(key){ if(key===state.profile) return; state.profile=key; setCurKeywords(); QUICK="all"; LAST_STATUS=null; document.querySelectorAll(".pf-btn").forEach(b=>b.classList.toggle("active",b.dataset.key===key)); renderSubbar(); await loadUploads(); await loadStats(); await loadJobs(); }
 

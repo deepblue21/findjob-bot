@@ -133,6 +133,13 @@ def test_db():
     check("source health varsayilan jobspy", health["jobspy"]["status"]=="unknown")
     check("source health blocked", health["kariyer.net"]["status"]=="blocked")
     check("source health mesaj", health["kariyer.net"]["message"]=="403")
+    with DB.get_conn() as conn:
+        conn.execute(
+            "UPDATE source_health SET checked_at = '2026-01-01 10:00:00' WHERE source = 'kariyer.net'"
+        )
+    DB.set_source_health("kariyer.net", "blocked", "skip", touch=False)
+    health = {x["source"]: x for x in DB.get_source_health()}
+    check("source health touch false zamani korur", health["kariyer.net"]["checked_at"]=="2026-01-01 10:00:00")
     un = DB.get_unnotified(3.0, "b")
     check("get_unnotified döner Job", len(un)==1 and hasattr(un[0],"title"))
     DB.mark_notified([DB.get_jobs(profile="b")[0]["url_hash"]], "b")
@@ -185,6 +192,7 @@ def test_dashboard_ui_contract():
     check("filtre özeti render fonksiyonu var", "function renderFilterSummary()" in html)
     check("durum geri alma fonksiyonu var", "function undoStatus()" in html)
     check("kaynak sagligi UI var", "function loadSourceHealth()" in html and "/api/source-health" in html)
+    check("kaynak sagligi uyarisi var", 'id="sourceHealthNote"' in html and "function renderSourceHealthNote()" in html)
     check("siyah terminal tema var", 'id:"black"' in html and 'data-theme="black"' in html and "#c6f035" in html and "#4fe0c5" in html)
 
 
@@ -334,6 +342,34 @@ def test_scanner_work_modes():
         os.unlink(p)
         try: fx.unlink()
         except OSError: pass
+
+
+def test_scanner_kariyer_block_cooldown():
+    print("\n[scanner kariyer block cooldown]")
+    p = tempfile.mktemp(suffix=".db")
+    DB.configure(p)
+    DB.set_source_health("kariyer.net", "blocked", "403")
+    calls = {"kariyer": 0}
+    o = (SC.scrape_jobspy, SC.scrape_kariyer, SC.scrape_rss_feeds, SC.notify_jobs, SC.notify_summary)
+    SC.scrape_jobspy = lambda *a, **k: []
+    def blocked_kariyer(*a, **k):
+        calls["kariyer"] += 1
+        return []
+    SC.scrape_kariyer = blocked_kariyer
+    SC.scrape_rss_feeds = lambda *a, **k: []
+    SC.notify_jobs = lambda *a, **k: None
+    SC.notify_summary = lambda *a, **k: None
+    cfg = fake_config()
+    cfg["sources"] = {"kariyer_block_cooldown_hours": 6}
+    try:
+        SC.run_scan(cfg=cfg, profile_key=TEST_KEY)
+        health = {x["source"]: x for x in DB.get_source_health()}
+        check("cooldown kariyer scraper cagrilmadi", calls["kariyer"] == 0)
+        check("cooldown blocked kaldi", health["kariyer.net"]["status"] == "blocked")
+        check("cooldown mesaji yazildi", "yeniden denenmeyecek" in health["kariyer.net"]["message"])
+    finally:
+        SC.scrape_jobspy, SC.scrape_kariyer, SC.scrape_rss_feeds, SC.notify_jobs, SC.notify_summary = o
+        os.unlink(p)
 
 
 def test_location_priority():
@@ -529,7 +565,8 @@ if __name__ == "__main__":
         for t in [test_filter_engine, test_db, test_db_general_filters, test_profiles, test_dashboard_ui_contract, test_cover_letter,
                   test_notifier, test_scanner_pipeline, test_scanner_without_telegram_keeps_unnotified,
                   test_scanner_store_score_threshold, test_scanner_work_modes,
-                  test_location_priority, test_web_api, test_dashboard_auth, test_resume_analyzer, test_upload_api]:
+                  test_scanner_kariyer_block_cooldown, test_location_priority,
+                  test_web_api, test_dashboard_auth, test_resume_analyzer, test_upload_api]:
             try: t()
             except Exception as e:
                 FAIL += 1; FAILS.append(t.__name__+" (exception)")

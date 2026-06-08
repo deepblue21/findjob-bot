@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -73,6 +74,8 @@ def test_filter_and_status_contract(src: str) -> None:
         ("/api/source-health", "kaynak sagligi API baglantisi"),
         (".src-chip.blocked", "kaynak engelli durum stili"),
         ("SOURCE_HEALTH", "kaynak sagligi state'i"),
+        ('id="sourceHealthNote"', "kaynak sagligi uyarisi"),
+        ("function renderSourceHealthNote()", "kaynak sagligi uyarisi render fonksiyonu"),
     ]
     for needle, label in required:
         check(label, needle in src)
@@ -116,7 +119,16 @@ def test_inline_scripts_compile(src: str) -> None:
         return
 
     js = "\n".join(f"new Function({script!r});" for script in scripts)
-    result = subprocess.run([node, "-e", js], cwd=ROOT, text=True, capture_output=True)
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
+        f.write(js)
+        temp_js = f.name
+    try:
+        result = subprocess.run([node, temp_js], cwd=ROOT, text=True, capture_output=True)
+    finally:
+        try:
+            Path(temp_js).unlink()
+        except OSError:
+            pass
     check("inline JS derleniyor", result.returncode == 0)
     if result.returncode != 0:
         print(result.stderr.strip())

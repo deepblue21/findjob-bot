@@ -260,25 +260,31 @@ def get_stats(profile=None) -> dict:
 
 # -- Kaynak sagligi ------------------------------------------------------------
 
-def set_source_health(source: str, status: str, message: str = "") -> None:
+def set_source_health(source: str, status: str, message: str = "", touch: bool = True) -> None:
     source = (source or "").strip().lower()
     if not source:
         return
     if status not in {"ok", "blocked", "error", "unknown"}:
         status = "unknown"
     message = (message or "").strip()[:260]
-    with get_conn() as conn:
-        conn.execute(
-            """
+    sql = """
+        INSERT INTO source_health (source, status, message, checked_at)
+        VALUES (?, ?, ?, datetime('now','localtime'))
+        ON CONFLICT(source) DO UPDATE SET
+            status = excluded.status,
+            message = excluded.message,
+            checked_at = excluded.checked_at
+    """
+    if not touch:
+        sql = """
             INSERT INTO source_health (source, status, message, checked_at)
             VALUES (?, ?, ?, datetime('now','localtime'))
             ON CONFLICT(source) DO UPDATE SET
                 status = excluded.status,
-                message = excluded.message,
-                checked_at = excluded.checked_at
-            """,
-            (source[:80], status, message),
-        )
+                message = excluded.message
+        """
+    with get_conn() as conn:
+        conn.execute(sql, (source[:80], status, message))
 
 
 def get_source_health() -> list[dict]:

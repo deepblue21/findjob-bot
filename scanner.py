@@ -8,6 +8,7 @@ import os
 import re
 import yaml
 import threading
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import db
@@ -31,6 +32,26 @@ logger = logging.getLogger(__name__)
 
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
 _scan_lock = threading.Lock()
+
+
+def _source_blocked_in_cooldown(source: str, cooldown_hours: float) -> tuple[bool, str]:
+    """Return whether a blocked source should be skipped until the cooldown expires."""
+    if cooldown_hours <= 0:
+        return False, ""
+    for item in db.get_source_health():
+        if item.get("source") != source or item.get("status") != "blocked":
+            continue
+        checked_at = item.get("checked_at")
+        if not checked_at:
+            return False, ""
+        try:
+            checked = datetime.strptime(checked_at, "%Y-%m-%d %H:%M:%S")
+        except (TypeError, ValueError):
+            return False, ""
+        retry_at = checked + timedelta(hours=cooldown_hours)
+        if datetime.now() < retry_at:
+            return True, retry_at.strftime("%H:%M")
+    return False, ""
 
 
 def _load_dotenv() -> dict:
@@ -126,10 +147,22 @@ def _scan_one_profile(
 
         # Kariyer.net
         if search.get("kariyer_queries"):
+            source_cfg = cfg.get("sources", {}) or {}
+            cooldown_hours = float(source_cfg.get("kariyer_block_cooldown_hours", 6))
+            cooling_down, retry_at = _source_blocked_in_cooldown(
+                "kariyer.net", cooldown_hours
+            )
             if "kariyer.net" in blocked_sources:
                 msg = "Bu taramada daha once 403 alindi; Kariyer sorgulari atlandi"
                 logger.info(f"[Kariyer] {msg}.")
-                db.set_source_health("kariyer.net", "blocked", msg)
+                db.set_source_health("kariyer.net", "blocked", msg, touch=False)
+            elif cooling_down:
+                msg = (
+                    f"Kariyer.net 403 engeli suruyor; yaklasik {retry_at} sonrasina "
+                    "kadar yeniden denenmeyecek"
+                )
+                logger.info(f"[Kariyer] {msg}.")
+                db.set_source_health("kariyer.net", "blocked", msg, touch=False)
             else:
                 try:
                     kariyer_result = scrape_kariyer(
