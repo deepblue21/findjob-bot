@@ -203,6 +203,27 @@
   .analysis-chip{display:inline-flex;align-items:center;min-height:24px;padding:4px 9px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);font-size:11.5px;font-weight:700}
   .analysis-empty{font-size:11.5px;color:var(--muted)}
   .analysis-preview{margin-top:12px;padding:10px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);font-size:12px;line-height:1.55;color:var(--text-2);max-height:92px;overflow:auto}
+  .auto-panel{display:grid;grid-template-columns:minmax(240px,1fr) auto;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 17px;margin:0 0 16px;box-shadow:var(--shadow-sm)}
+  .auto-title{font-size:13.5px;font-weight:800;color:var(--text)}
+  .auto-sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .auto-meter{display:flex;align-items:center;gap:9px;justify-content:flex-end;flex-wrap:wrap}
+  .auto-pill{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:5px 10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);font-size:11.5px;font-weight:800;color:var(--text-2)}
+  .auto-pill.ready{background:var(--green-soft);border-color:rgba(22,163,74,.22);color:var(--green)}
+  .auto-toggle{padding:8px 12px;border-radius:10px;background:var(--brand-soft);color:var(--brand);font-size:12px;font-weight:800}
+  .auto-toggle:hover{background:var(--brand);color:#fff}
+  .auto-list{display:none;grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px}
+  .auto-list.show{display:grid;gap:8px}
+  .auto-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border)}
+  .auto-job{min-width:0}
+  .auto-job b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px;color:var(--text)}
+  .auto-job span{font-size:11.5px;color:var(--muted)}
+  .auto-method{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;font-weight:900;color:var(--muted-2);white-space:nowrap}
+  .auto-method.ready{color:var(--green)}
+  .apply-plan{display:none;margin-bottom:12px;padding:11px 12px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border);font-size:12px;color:var(--text-2)}
+  .apply-plan.show{display:block}
+  .apply-plan b{display:block;font-size:12.5px;color:var(--text);margin-bottom:4px}
+  .apply-plan .warn{margin-top:6px;color:var(--amber)}
+  .apply-plan a{display:inline-flex;margin-top:8px;padding:7px 10px;border-radius:9px;background:var(--green-soft);color:var(--green);font-weight:800}
 
   .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin:18px 0 16px}
   .stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;box-shadow:var(--shadow-sm);transition:transform .18s,box-shadow .18s;cursor:pointer}
@@ -400,6 +421,9 @@
     .resume-panel{grid-template-columns:1fr;align-items:flex-start}
     .resume-actions{justify-content:flex-start}
     .upload-list{justify-content:flex-start;max-width:100%}
+    .auto-panel{grid-template-columns:1fr;align-items:flex-start}
+    .auto-meter{justify-content:flex-start}
+    .auto-item{grid-template-columns:1fr}
     .filters{align-items:stretch}
     .tabs{width:100%;overflow-x:auto}
     .tab{white-space:nowrap}
@@ -455,6 +479,19 @@
       <div class="upload-list" id="uploadList"></div>
     </div>
     <div class="resume-analysis" id="resumeAnalysis" aria-live="polite"></div>
+  </section>
+
+  <section class="auto-panel" id="autoApplyPanel" aria-label="Auto-Apply Lite">
+    <div>
+      <div class="auto-title">Auto-Apply Lite</div>
+      <div class="auto-sub" id="autoApplySub">Yüksek skorlu ilanlar için onaylı başvuru adayları hazırlanıyor.</div>
+    </div>
+    <div class="auto-meter">
+      <span class="auto-pill" id="autoApplyCount">0 aday</span>
+      <span class="auto-pill ready" id="autoApplyReady">0 hazır</span>
+      <button class="auto-toggle" onclick="toggleApplyQueue()">Adayları göster</button>
+    </div>
+    <div class="auto-list" id="autoApplyList"></div>
   </section>
 
   <div class="stats" id="stats">
@@ -570,6 +607,7 @@
     </div>
     <div class="modal-body">
       <div class="hl" id="appHl"></div>
+      <div class="apply-plan" id="appPlan"></div>
       <div class="sec-label"><span>Ön yazı (düzenleyebilirsin)</span><button class="copy-btn" onclick="copyCover()">⧉ Kopyala</button></div>
       <textarea class="cover-box" id="appCover"></textarea>
       <div class="qa" id="appQa"></div>
@@ -585,7 +623,7 @@
 <script>
 const API = "";
 let state = { profile:"", status:"all", source:"all", city:"all", work_mode:"all", days:"all", min_score:0, remote_only:false, search:"", sort:"score" };
-let scanTimer = null, PROFILES = [], CLIENT_JOBS = [], VIEW_JOBS = [], CUR_KEYWORDS = [];
+let scanTimer = null, PROFILES = [], CLIENT_JOBS = [], VIEW_JOBS = [], CUR_KEYWORDS = [], AUTO_QUEUE = [];
 let FILTER_CITIES = [];
 let SOURCE_HEALTH = {};
 let QUICK = "all", SEL = -1;
@@ -682,7 +720,7 @@ function renderSubbar(){
   document.getElementById("subbar").innerHTML=`<span class="who">Aktif: <b>${esc(p.name||'—')}</b></span><span class="sep"></span><span>${esc(p.title||'')}</span><span class="sep"></span><span class="srcs">${chips}</span>`;
   renderSourceHealthNote();
 }
-async function switchProfile(key){ if(key===state.profile) return; state.profile=key; setCurKeywords(); QUICK="all"; LAST_STATUS=null; document.querySelectorAll(".pf-btn").forEach(b=>b.classList.toggle("active",b.dataset.key===key)); renderSubbar(); await loadUploads(); await loadStats(); await loadJobs(); }
+async function switchProfile(key){ if(key===state.profile) return; state.profile=key; setCurKeywords(); QUICK="all"; LAST_STATUS=null; document.querySelectorAll(".pf-btn").forEach(b=>b.classList.toggle("active",b.dataset.key===key)); renderSubbar(); await loadUploads(); await loadApplyQueue(); await loadStats(); await loadJobs(); }
 
 // ── PDF kaynakları ──
 function renderUploads(files){
@@ -715,6 +753,45 @@ function renderResumeAnalysis(data){
     </div>${preview}`;
   box.classList.add("show");
 }
+
+// ── Auto-Apply Lite ──
+function renderApplyQueue(data){
+  const count=document.getElementById("autoApplyCount");
+  const ready=document.getElementById("autoApplyReady");
+  const sub=document.getElementById("autoApplySub");
+  const list=document.getElementById("autoApplyList");
+  AUTO_QUEUE=(data&&data.items)||[];
+  count.textContent=`${(data&&data.count)||0} aday`;
+  ready.textContent=`${(data&&data.ready_count)||0} hazır`;
+  sub.textContent=data&&data.enabled
+    ? `Skor ≥ ${data.min_score} olan ilanlar incelenir; son gönderim her zaman kullanıcı onayında.`
+    : "Auto-Apply Lite policy kapalı.";
+  if(!AUTO_QUEUE.length){
+    list.innerHTML='<div class="resume-sub">Şu an başvuruya hazır aday yok.</div>';
+    return;
+  }
+  list.innerHTML=AUTO_QUEUE.map(item=>{
+    const j=item.job||{}, p=item.plan||{};
+    const cls=p.ready?'ready':'';
+    const method=p.ready?'e-posta taslağı':(p.method==='blocked_platform'?'manuel platform':'incele');
+    return `<div class="auto-item">
+      <div class="auto-job"><b>${esc(j.title||'İlan')}</b><span>${esc(j.company||'—')} · ${esc(j.source||'—')} · skor ${(+j.score||0).toFixed(1)}</span></div>
+      <button class="auto-method ${cls}" onclick="openApp('${esc(j.url_hash||'')}')">${method}</button>
+    </div>`;
+  }).join('');
+}
+async function loadApplyQueue(){
+  const empty={enabled:true,count:0,ready_count:0,items:[],min_score:7};
+  if(!state.profile){ renderApplyQueue(empty); return; }
+  try{
+    const data=await (await fetch(API+"/api/apply/queue?profile="+encodeURIComponent(state.profile))).json();
+    renderApplyQueue(data);
+  }catch(e){ renderApplyQueue(empty); }
+}
+function toggleApplyQueue(){
+  document.getElementById("autoApplyList").classList.toggle("show");
+}
+
 async function loadUploads(){
   if(!state.profile){ renderUploads([]); return; }
   try{
@@ -904,14 +981,14 @@ async function setStatus(hash, status){
   LAST_STATUS={hash, status:prev, profile:state.profile};
   toast(`İlan → ${labels[status]}`, true, {label:"Geri al", fn:"undoStatus()"});
   if(document.getElementById("drawer").classList.contains("show")) closeDrawer();
-  await loadStats(); await loadJobs();
+  await loadApplyQueue(); await loadStats(); await loadJobs();
 }
 async function undoStatus(){
   if(!LAST_STATUS) return;
   const u=LAST_STATUS; LAST_STATUS=null;
   await fetch(`${API}/api/jobs/${u.hash}/status?status=${u.status}&profile=${encodeURIComponent(u.profile)}`,{method:"POST"});
   toast(`İşlem geri alındı → ${statusLabel(u.status)}`);
-  await loadStats(); await loadJobs();
+  await loadApplyQueue(); await loadStats(); await loadJobs();
 }
 
 // ── detay drawer ──
@@ -956,6 +1033,7 @@ async function openApp(hash){
   document.getElementById("appCompany").textContent=a.company||"";
   document.getElementById("appCover").value=a.cover_letter||"";
   document.getElementById("appHl").innerHTML=(a.highlights||[]).map(h=>`<span>${esc(h)}</span>`).join('');
+  renderApplyPlan(a.apply_plan||null);
   document.getElementById("appQa").innerHTML=(a.answers||[]).map(qa=>`<div class="qa-item"><div class="qa-q">${esc(qa.q)}</div><div class="qa-a">${esc(qa.a)}</div></div>`).join('');
   document.getElementById("appNote").textContent=a.note||"";
   document.getElementById("appGo").href=a.url||"#";
@@ -964,6 +1042,15 @@ async function openApp(hash){
 }
 function closeApp(){ document.getElementById("appModal").classList.remove("show"); }
 function copyCover(){ const t=document.getElementById("appCover").value; navigator.clipboard.writeText(t).then(()=>toast("Ön yazı kopyalandı ✓")).catch(()=>toast("Kopyalanamadı",false)); }
+function renderApplyPlan(plan){
+  const box=document.getElementById("appPlan");
+  if(!plan){ box.className="apply-plan"; box.innerHTML=""; return; }
+  const warn=(plan.warnings||[]).map(w=>`<div class="warn">${esc(w)}</div>`).join('');
+  const action=plan.mailto_url ? `<a href="${esc(plan.mailto_url)}">E-posta taslağını aç</a>` : "";
+  const label=plan.ready?"Başvuru taslağı hazır":"Manuel onay gerekli";
+  box.className="apply-plan show";
+  box.innerHTML=`<b>${label}</b><div>${esc(plan.reason||'')}</div>${warn}${action}`;
+}
 
 // ── scan ──
 async function triggerScan(){
@@ -973,7 +1060,7 @@ async function triggerScan(){
   toast("Tarama başlatıldı"+(who?` — ${who}`:"")+"…"); setScanning(true); pollScan();
 }
 function setScanning(on){ const b=document.getElementById("scanBtn"); b.classList.toggle("scanning",on); b.disabled=on; document.getElementById("scanLabel").textContent=on?"Taranıyor…":"Şimdi Tara"; }
-function pollScan(){ clearInterval(scanTimer); scanTimer=setInterval(async()=>{ const s=await (await fetch(API+"/api/scan/status")).json(); if(!s.running){ clearInterval(scanTimer); setScanning(false); toast("Tarama tamamlandı ✓"); await loadSourceHealth(); renderSubbar(); await loadStats(); await loadJobs(); } },3000); }
+function pollScan(){ clearInterval(scanTimer); scanTimer=setInterval(async()=>{ const s=await (await fetch(API+"/api/scan/status")).json(); if(!s.running){ clearInterval(scanTimer); setScanning(false); toast("Tarama tamamlandı ✓"); await loadSourceHealth(); renderSubbar(); await loadApplyQueue(); await loadStats(); await loadJobs(); } },3000); }
 
 // ── filtreler ──
 function setTab(status){ document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.dataset.status===status)); state.status=status; loadJobs(); }
@@ -1030,7 +1117,7 @@ document.addEventListener("keydown",e=>{
 // ── init ──
 (async()=>{
   buildThemeMenu();
-  await loadFilterOptions(); await loadSourceHealth(); await loadProfiles(); await loadUploads(); await loadStats(); await loadJobs();
+  await loadFilterOptions(); await loadSourceHealth(); await loadProfiles(); await loadUploads(); await loadApplyQueue(); await loadStats(); await loadJobs();
   if((await (await fetch(API+"/api/scan/status")).json()).running){ setScanning(true); pollScan(); }
   setInterval(loadStats,30000);
 })();

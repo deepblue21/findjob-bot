@@ -19,6 +19,7 @@ import scanner
 import profiles as profiles_mod
 from cities import TURKISH_CITIES
 from cover_letter import generate_application
+from apply_lite import apply_policy, build_apply_plan
 from resume_analyzer import analyze_resume_pdf
 
 logger = logging.getLogger(__name__)
@@ -258,7 +259,59 @@ def api_application(url_hash: str, profile: str = Query("")):
     if not job:
         return JSONResponse({"error": "ilan bulunamadı"}, status_code=404)
     prof = profiles_mod.get_profile(profile or job.get("profile", "")) or {}
-    return generate_application(job, prof)
+    application = generate_application(job, prof)
+    policy = apply_policy(scanner.load_config(), prof)
+    application["apply_plan"] = build_apply_plan(job, prof, policy, application)
+    return application
+
+
+@app.get("/api/apply/queue")
+def api_apply_queue(profile: str = Query(""), limit: int = Query(8)):
+    """Yüksek skorlu ilanlar için onaylı başvuru adaylarını döndür."""
+    cfg = scanner.load_config()
+    prof = profiles_mod.get_profile(profile) or {}
+    policy = apply_policy(cfg, prof)
+    jobs = db.get_jobs(
+        profile=profile or "all",
+        status="all",
+        min_score=policy["min_score"],
+        sort="score",
+        limit=max(1, min(limit, 50)),
+    )
+    items = []
+    ready_count = 0
+    for job in jobs:
+        if job.get("status") in {"applied", "dismissed"}:
+            continue
+        application = generate_application(job, prof)
+        plan = build_apply_plan(job, prof, policy, application)
+        if not plan["candidate"]:
+            continue
+        if plan["ready"]:
+            ready_count += 1
+        items.append({
+            "job": {
+                "url_hash": job.get("url_hash"),
+                "title": job.get("title"),
+                "company": job.get("company"),
+                "location": job.get("location"),
+                "source": job.get("source"),
+                "score": job.get("score"),
+                "url": job.get("url"),
+                "status": job.get("status"),
+            },
+            "plan": plan,
+        })
+
+    daily_limit = int(policy.get("daily_limit", 3))
+    return {
+        "enabled": bool(policy.get("enabled", True)),
+        "min_score": policy["min_score"],
+        "daily_limit": daily_limit,
+        "count": len(items),
+        "ready_count": ready_count,
+        "items": items[:daily_limit],
+    }
 
 
 @app.post("/api/scan")

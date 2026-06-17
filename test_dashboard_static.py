@@ -109,6 +109,21 @@ def test_resume_analysis_contract(src: str) -> None:
         check(label, needle in src)
 
 
+def test_auto_apply_contract(src: str) -> None:
+    print("\n[auto apply lite contract]")
+    required = [
+        ('id="autoApplyPanel"', "auto apply paneli"),
+        ('id="autoApplyList"', "auto apply aday listesi"),
+        ('id="appPlan"', "başvuru planı modal alanı"),
+        ("function loadApplyQueue()", "auto apply kuyruk yükleme fonksiyonu"),
+        ("function renderApplyPlan(", "başvuru planı render fonksiyonu"),
+        ("/api/apply/queue", "auto apply API bağlantısı"),
+        ("E-posta taslağını aç", "e-posta taslak aksiyonu"),
+    ]
+    for needle, label in required:
+        check(label, needle in src)
+
+
 def test_inline_scripts_compile(src: str) -> None:
     print("\n[js syntax]")
     scripts = re.findall(r"<script>([\s\S]*?)</script>", src)
@@ -143,6 +158,7 @@ def main() -> int:
     test_filter_and_status_contract(src)
     test_upload_contract(src)
     test_resume_analysis_contract(src)
+    test_auto_apply_contract(src)
     test_inline_scripts_compile(src)
     print("\n" + "=" * 60)
     print(f"  SONUÇ: {PASS} geçti, {FAIL} başarısız")

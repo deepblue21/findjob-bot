@@ -17,6 +17,7 @@ Kaynaklar: **Kariyer.net · Indeed · Google Jobs · LinkedIn** (uluslararası r
 - **Konum filtresi:** profilinde izin verdiğin şehirler (ör. İstanbul/Ankara, yerinde+hibrit) **veya** tamamen uzaktan; diğer şehirlerin yerinde ilanları elenir.
 - **Türkçe-güvenli eşleştirme:** "İdari İşler" gibi başlıklar büyük İ harfine takılmadan doğru puanlanır.
 - **Başvuru kuyruğu + ön yazı taslağı:** her ilana özel ön yazı, ekran sorusu cevapları ve öne çıkan beceriler; kopyala → kendin başvur.
+- **Auto-Apply Lite:** yüksek skorlu ilanları başvuru adayı yapar, açık e-posta varsa taslak hazırlar; platformlarda otomatik submit yapmaz.
 - **Telegram:** ayarlanırsa eşleşen ilanları kişi adıyla bildirir; ayarlanmazsa dashboard çalışmaya devam eder.
 - **Dedup:** aynı ilan iki kez bildirilmez. **Otomatik tarama:** her N saatte tüm profiller.
 - **Dashboard:** skor rozetleri, çalışma şekli (uzaktan/hibrit/yerinde) rozetleri, kaynak/skor/remote filtreleri, durum sekmeleri, anlık SCAN NOW.
@@ -111,6 +112,34 @@ CV analizi profili otomatik değiştirmez; çıkan önerileri kontrol edip uygun
 `profiles/ben.yaml` içine eklemek gerekir. Değişiklikten sonra dashboard'daki **SCAN NOW**
 düğmesiyle yeni filtrelerle tarama başlatılabilir.
 
+### Auto-Apply Lite
+
+Auto-Apply Lite, uygun ilanlara daha hızlı başvurmak için güvenli bir hazırlık katmanıdır.
+Tam otomatik platform botu değildir.
+
+Varsayılan davranış:
+- Skoru `auto_apply.min_score` ve üstünde olan ilanlar aday sayılır.
+- `applied` veya `dismissed` durumundaki ilanlar aday kuyruğuna alınmaz.
+- İlan açıklamasında açık bir e-posta varsa e-posta taslağı hazırlanır.
+- `linkedin`, `indeed`, `kariyer.net` gibi platformlarda otomatik form doldurma veya submit yapılmaz.
+- Son gönderim her zaman kullanıcı onayındadır.
+
+Ortak ayarlar `config.yaml` içindedir:
+
+```yaml
+auto_apply:
+  enabled: true
+  min_score: 7.0
+  daily_limit: 3
+  allowed_methods: ["email"]
+  require_approval: true
+  blocked_platform_sources: ["linkedin", "indeed", "kariyer.net"]
+```
+
+Dashboard'daki **Auto-Apply Lite** paneli, yüksek skorlu adayları ve e-posta taslağına hazır
+olanları gösterir. E-posta taslağı açıldığında CV eki otomatik eklenmez; göndermeden önce
+CV'yi elle eklemek gerekir.
+
 ### Telegram bilgileri
 - `@BotFather` → `/newbot` → **TELEGRAM_BOT_TOKEN**
 - `@userinfobot` → **TELEGRAM_CHAT_ID**
@@ -141,6 +170,7 @@ DASHBOARD_PASSWORD=guclu-bir-sifre-yaz
 - Sağ üstten **kişi (isim)** seç → o profilin ilanları/istatistikleri gelir.
 - **SCAN NOW** → seçili kişiyi anında tarar (config her taramada yeniden okunur, restart gerekmez).
 - **PDF yükle** → seçili profile CV/portföy PDF'i bağlar; **Önerileri çıkar** ile beceri ve arama terimi önerilerini gösterir.
+- **Auto-Apply Lite** → yüksek skorlu başvuru adaylarını ve varsa e-posta taslaklarını gösterir.
 - İlan kartında: **📝** ön yazı taslağı · **★** kuyruğa ekle · **✓** başvurdum · **✕** ele · **↗** ilana git.
 - **📝** modalında: ön yazıyı düzenle/kopyala, ekran sorusu cevapları, **İlana git** ile başvur, **Başvurdum** ile işaretle.
 - Filtreler: durum sekmeleri (TÜMÜ / YENİ / ★ KUYRUK / BAŞVURULDU / ELENEN), kaynak, min skor, **sadece remote**, sıralama, arama.

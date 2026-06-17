@@ -25,6 +25,7 @@ import profiles as P
 import cover_letter as CL
 import notifier as NT
 import scanner as SC
+import apply_lite as AL
 
 TEST_KEY = "tester"
 _TMP = {"dir": None, "old": None, "auth_env": {}}
@@ -195,6 +196,8 @@ def test_dashboard_ui_contract():
     check("durum geri alma fonksiyonu var", "function undoStatus()" in html)
     check("kaynak sagligi UI var", "function loadSourceHealth()" in html and "/api/source-health" in html)
     check("kaynak sagligi uyarisi var", 'id="sourceHealthNote"' in html and "function renderSourceHealthNote()" in html)
+    check("auto apply lite UI var", 'id="autoApplyPanel"' in html and "function loadApplyQueue()" in html)
+    check("başvuru planı UI var", 'id="appPlan"' in html and "function renderApplyPlan(" in html)
     check("siyah terminal tema var", 'id:"black"' in html and 'data-theme="black"' in html and "#c6f035" in html and "#4fe0c5" in html)
 
 
@@ -208,6 +211,35 @@ def test_cover_letter():
     check("answers>=3", len(a["answers"])>=3)
     check("highlights var", len(a["highlights"])>0)
     check("url korunuyor", a["url"]=="https://x/1")
+
+
+def test_apply_lite():
+    print("\n[apply lite]")
+    prof = P.get_profile(TEST_KEY) or {}
+    policy = AL.apply_policy({"auto_apply": {"min_score": 7, "daily_limit": 2}}, prof)
+    email_job = {
+        "title": "QA Test Mühendisi",
+        "company": "Acme",
+        "location": "İzmir",
+        "url": "https://acme.test/jobs/1",
+        "source": "company",
+        "description": "Başvuru için cv@acme.test adresine CV gönderin.",
+        "score": 8,
+        "status": "new",
+    }
+    app = CL.generate_application(email_job, prof)
+    plan = AL.build_apply_plan(email_job, prof, policy, app)
+    check("email yakalandı", plan["email"] == "cv@acme.test")
+    check("email plan hazır", plan["ready"] is True and plan["method"] == "email")
+    check("mailto üretildi", plan["mailto_url"].startswith("mailto:cv%40acme.test"))
+
+    blocked_job = dict(email_job, source="linkedin", description="", score=8)
+    blocked = AL.build_apply_plan(blocked_job, prof, policy, app)
+    check("platform otomasyonu kapalı", blocked["method"] == "blocked_platform" and not blocked["ready"])
+
+    low_job = dict(email_job, score=3)
+    low = AL.build_apply_plan(low_job, prof, policy, app)
+    check("düşük skor aday değil", low["candidate"] is False)
 
 
 def test_notifier():
@@ -459,6 +491,8 @@ def test_web_api():
         check("/api/scan/status", "running" in g("/api/scan/status"))
         sh = g("/api/source-health")["sources"]
         check("/api/source-health", any(x["source"]=="kariyer.net" and x["status"]=="blocked" for x in sh))
+        aq = g("/api/apply/queue?profile="+TEST_KEY)
+        check("/api/apply/queue", "items" in aq and "ready_count" in aq)
     finally:
         srv.should_exit = True; os.unlink(p)
 
@@ -587,6 +621,7 @@ if __name__ == "__main__":
     setup_fixture()
     try:
         for t in [test_filter_engine, test_db, test_db_general_filters, test_profiles, test_dashboard_ui_contract, test_cover_letter,
+                  test_apply_lite,
                   test_notifier, test_scanner_pipeline, test_scanner_without_telegram_keeps_unnotified,
                   test_scanner_store_score_threshold, test_scanner_work_modes,
                   test_scanner_kariyer_block_cooldown, test_location_priority,

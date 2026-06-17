@@ -12,6 +12,14 @@ schedule:
 sources:
   kariyer_block_cooldown_hours: 6  # Kariyer 403 verirse tekrar denemeden önce beklenecek süre
 
+auto_apply:
+  enabled: true              # Auto-Apply Lite: aday kuyrugu + onayli taslak, otomatik submit yok
+  min_score: 7.0             # bu skor ve ustu basvuruya hazir aday sayilir
+  daily_limit: 3             # dashboard'da one cikarilacak gunluk aday sayisi
+  allowed_methods: ["email"] # ilk guvenli kanal: acik e-posta taslagi
+  require_approval: true     # son gonderim kullanici onayi ister
+  blocked_platform_sources: ["linkedin", "indeed", "kariyer.net"]
+
 # Tüm profillerde ORTAK puanlama (çalışma şekli / seviye).
 # Konum önceliği ve kişiye özel beceriler profiles/*.yaml içinden otomatik eklenir.
 scoring:
