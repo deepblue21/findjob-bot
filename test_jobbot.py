@@ -95,11 +95,13 @@ def test_filter_engine():
     check("should_exclude", FE.should_exclude(Job("Satış Temsilcisi","c","l","u","s"), ["satış temsilcisi"]))
     check("location izmir TUT", FE.location_allowed("İzmir, Türkiye", ["İzmir","Manisa"], False))
     check("location manisa TUT", FE.location_allowed("Manisa", ["İzmir","Manisa"], False))
+    check("location Indeed T35 İzmir TUT", FE.location_allowed("Alsancak, T35, TR", ["İzmir","Manisa"], False))
     check("location jenerik TUT", FE.location_allowed("Türkiye", ["İzmir","Manisa"], False))
     check("location boş TUT", FE.location_allowed("", ["İzmir","Manisa"], False))
     check("location remote TUT", FE.location_allowed("İstanbul", ["İzmir","Manisa"], True))
     check("location İstanbul yerinde AT", not FE.location_allowed("İstanbul", ["İzmir","Manisa"], False))
     check("location Ankara yerinde AT", not FE.location_allowed("Ankara, Türkiye", ["İzmir","Manisa"], False))
+    check("location İçel yerinde AT", not FE.location_allowed("Gülnar, İçel, Türkiye", ["İzmir","Manisa"], False))
     check("location İzmir izin yoksa AT", not FE.location_allowed("İzmir, Türkiye", ["Ankara"], False))
     check("location Eskişehir izin yoksa AT", not FE.location_allowed("Eskişehir", ["Ankara"], False))
     check("is_remote_job uzaktan", FE.is_remote_job(Job("t","c","Uzaktan / Remote","u","s")))
@@ -220,6 +222,23 @@ def test_notifier():
     NT.notify_jobs("tok","chat",[Job("QA","A","İzmir","u","indeed",score=8)], label="A")
     check("notify_jobs >=3 mesaj", len(sent)>=3)
     check("notify_jobs label", any("A" in m for m in sent))
+    sent.clear()
+    fit_job = Job(
+        "QA Test Mühendisi",
+        "Acme",
+        "Uzaktan",
+        "u2",
+        "indeed",
+        description="Aranan Nitelikler: Selenium deneyimi. Python bilgisi. İyi iletişim.",
+        score=8,
+        is_remote=True,
+    )
+    fit_job.match_terms = ["qa", "selenium"]
+    fit_job.match_score = 5
+    NT.notify_jobs("tok","chat",[fit_job], label="A")
+    body = "\n".join(sent)
+    check("notify_jobs uygunluk nedeni", "Özellikle uygun" in body and "selenium" in body)
+    check("notify_jobs beklenti özeti", "Beklentiler" in body and "Selenium deneyimi" in body)
     NT.send_message = orig
     check("boş token False", NT.send_message("", "c", "x") is False)
     check("placeholder token False", NT.send_message("${TELEGRAM_BOT_TOKEN}", "c", "x") is False)
@@ -237,10 +256,14 @@ def test_scanner_pipeline():
     ]
     o = (SC.scrape_jobspy, SC.scrape_kariyer, SC.scrape_rss_feeds, SC.notify_jobs, SC.notify_summary)
     sent = []
+    notified_jobs = []
     SC.scrape_jobspy = lambda *a, **k: fake
     SC.scrape_kariyer = lambda *a, **k: []
     SC.scrape_rss_feeds = lambda *a, **k: []
-    SC.notify_jobs = lambda bt,ci,jobs,label="": sent.append(("jobs",label,len(jobs)))
+    def fake_notify(bt, ci, jobs, label=""):
+        notified_jobs.extend(jobs)
+        sent.append(("jobs",label,len(jobs)))
+    SC.notify_jobs = fake_notify
     SC.notify_summary = lambda bt,ci,res: sent.append(("summary",res))
     try:
         SC.run_scan(cfg=fake_config(), profile_key=TEST_KEY)
@@ -249,6 +272,7 @@ def test_scanner_pipeline():
         check("İstanbul yerinde elendi", "Test Mühendisi" not in titles)
         check("uzaktan tutuldu", "Yazılım Test Uzmanı" in titles)
         check("alakasız (Garson) elendi", "Garson" not in titles)
+        check("bildirim uygunluk terimleri taşıyor", any("selenium" in (j.match_terms or []) for j in notified_jobs))
         check("özet rapor gönderildi", any(s[0]=="summary" for s in sent))
     finally:
         SC.scrape_jobspy, SC.scrape_kariyer, SC.scrape_rss_feeds, SC.notify_jobs, SC.notify_summary = o

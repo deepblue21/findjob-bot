@@ -6,7 +6,7 @@ telegram:
 schedule:
   interval_hours: 3           # her N saatte tüm profiller otomatik taranır
   min_score_to_notify: 3.0    # Telegram'a gönderme eşiği
-  min_score_to_store: 1.0     # dashboard'a kaydetme eşiği
+  min_score_to_store: 3.0     # dashboard'a kaydetme eşiği
   min_relevance: 1.0          # bir ilan en az bu kadar ROL/arama-terimi uyumu içermezse alınmaz
 
 sources:

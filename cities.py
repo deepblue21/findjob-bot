@@ -15,21 +15,36 @@ TURKISH_CITIES = [
     "Iğdır", "Yalova", "Karabük", "Kilis", "Osmaniye", "Düzce",
 ]
 
+CITY_ALIASES = {
+    "Mersin": ["İçel", "Icel"],
+    "İzmir": ["T35"],
+    "Manisa": ["T45"],
+}
+
 
 def tr_low(text: str) -> str:
     return (text or "").replace("İ", "i").replace("I", "i").replace("ı", "i").lower()
+
+
+def _variants(value: str) -> set[str]:
+    value = (value or "").strip()
+    if not value:
+        return set()
+    return {
+        value,
+        value.lower(),
+        value.upper(),
+        value.replace("İ", "I"),
+        value.replace("ı", "i"),
+        tr_low(value),
+    }
 
 
 def city_variants(city: str) -> list[str]:
     city = (city or "").strip()
     if not city:
         return []
-    variants = {
-        city,
-        city.lower(),
-        city.upper(),
-        city.replace("İ", "I"),
-        city.replace("ı", "i"),
-        tr_low(city),
-    }
+    variants = _variants(city)
+    for alias in CITY_ALIASES.get(city, []):
+        variants.update(_variants(alias))
     return [v for v in variants if v]

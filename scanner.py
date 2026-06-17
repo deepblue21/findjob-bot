@@ -19,6 +19,7 @@ from filter_engine import (
     location_allowed,
     is_remote_job,
     relevance_score,
+    matched_keywords,
     tr_norm,
     work_mode_allowed,
 )
@@ -260,6 +261,9 @@ def _scan_one_profile(
         to_notify = db.get_unnotified(min_score, profile=key)
         notified_count = 0
         if to_notify and telegram_ready(tg):
+            for job in to_notify:
+                job.match_terms = matched_keywords(job, role_weights)
+                job.match_score = relevance_score(job, role_weights)
             notify_jobs(tg["bot_token"], tg["chat_id"], to_notify, label=name)
             db.mark_notified([j.url_hash for j in to_notify], profile=key)
             notified_count = len(to_notify)

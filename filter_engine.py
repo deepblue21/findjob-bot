@@ -1,4 +1,4 @@
-from cities import TURKISH_CITIES
+from cities import TURKISH_CITIES, city_variants
 from models import Job
 
 _TR_ASCII = str.maketrans({
@@ -86,6 +86,28 @@ def relevance_score(job, role_weights: dict) -> float:
     return round(total, 1)
 
 
+def matched_keywords(job, role_weights: dict, limit: int = 8) -> list[str]:
+    """İlan başlığı/açıklamasında yakalanan rol ve beceri terimlerini döndür."""
+    text = tr_norm(" ".join([job.title or "", job.description or ""]))
+    matches: list[str] = []
+    seen: set[str] = set()
+    items = sorted(
+        (role_weights or {}).items(),
+        key=lambda x: (-float(x[1] or 0), -len(str(x[0]))),
+    )
+    for keyword, _weight in items:
+        label = str(keyword).strip()
+        norm = tr_norm(label)
+        if not label or not norm or norm in seen:
+            continue
+        if norm in text:
+            seen.add(norm)
+            matches.append(label)
+            if len(matches) >= limit:
+                break
+    return matches
+
+
 def location_allowed(location: str, cities: list, is_remote: bool = False) -> bool:
     """Kabul kuralı (yasak-liste mantığı):
       - Tamamen uzaktan/remote                       -> TUT
@@ -98,10 +120,15 @@ def location_allowed(location: str, cities: list, is_remote: bool = False) -> bo
     if is_remote or "uzaktan" in t or "remote" in t:
         return True
     for c in cities or []:
-        if city_norm(c) in t:
-            return True
+        for term in city_variants(str(c)):
+            if city_norm(term) in t:
+                return True
     # İzin verilenler dışındaki belirgin şehirler -> yerinde ise ele.
-    known_cities = {city_norm(c) for c in TURKISH_CITIES}
+    known_cities = {
+        city_norm(term)
+        for c in TURKISH_CITIES
+        for term in city_variants(str(c))
+    }
     known_cities.update({"kibris", "yurt disi", "yurtdisi"})
     for city in known_cities:
         if city and city in t:
