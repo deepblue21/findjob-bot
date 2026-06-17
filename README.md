@@ -79,6 +79,38 @@ python run.py
 
 Tarayıcıda: **http://localhost:8765**
 
+### Profil ve CV/PDF nasıl verilir?
+
+Projeyi kullanan herkes kendi kişisel bilgisini repoya koymadan iki yerde tanımlar:
+
+1. **Profil dosyası:** `profiles/example.yaml` dosyasını kopyalayıp kendi dosyasını oluşturur.
+
+   ```bash
+   cp profiles/example.yaml profiles/ben.yaml
+   nano profiles/ben.yaml
+   ```
+
+   Bu dosyada özellikle şunlar doldurulur:
+   - `key`, `name`, `title`, `email`, `location`
+   - `preferred_locations` ve `work_modes`
+   - `skills`
+   - `search.jobspy_queries` ve gerekiyorsa `kariyer_queries`
+   - `exclude_keywords`
+
+   `profiles/*.yaml` kişisel veri sayılır ve `.gitignore` kapsamındadır; GitHub'a gönderilmez.
+
+2. **CV/PDF dosyası:** Uygulama çalıştıktan sonra dashboard'da sağ üstten kendi profilini seçer,
+   **Profil PDF kaynakları** bölümünde **PDF yükle** düğmesiyle CV veya portföy PDF'ini yükler.
+   Ardından **Önerileri çıkar** düğmesi beceri, pozisyon, şehir ve arama terimi önerileri üretir.
+
+   Yüklenen PDF'ler yerelde `uploads/resumes/<profil-key>/` altında tutulur ve repoya girmez.
+   PDF başına sınır 10 MB'dir. Taranmış/görüntü tabanlı PDF'lerde metin okunamayabilir; en iyi sonuç
+   seçilebilir metin içeren CV PDF'iyle alınır.
+
+CV analizi profili otomatik değiştirmez; çıkan önerileri kontrol edip uygun olanları
+`profiles/ben.yaml` içine eklemek gerekir. Değişiklikten sonra dashboard'daki **SCAN NOW**
+düğmesiyle yeni filtrelerle tarama başlatılabilir.
+
 ### Telegram bilgileri
 - `@BotFather` → `/newbot` → **TELEGRAM_BOT_TOKEN**
 - `@userinfobot` → **TELEGRAM_CHAT_ID**
@@ -108,6 +140,7 @@ DASHBOARD_PASSWORD=guclu-bir-sifre-yaz
 
 - Sağ üstten **kişi (isim)** seç → o profilin ilanları/istatistikleri gelir.
 - **SCAN NOW** → seçili kişiyi anında tarar (config her taramada yeniden okunur, restart gerekmez).
+- **PDF yükle** → seçili profile CV/portföy PDF'i bağlar; **Önerileri çıkar** ile beceri ve arama terimi önerilerini gösterir.
 - İlan kartında: **📝** ön yazı taslağı · **★** kuyruğa ekle · **✓** başvurdum · **✕** ele · **↗** ilana git.
 - **📝** modalında: ön yazıyı düzenle/kopyala, ekran sorusu cevapları, **İlana git** ile başvur, **Başvurdum** ile işaretle.
 - Filtreler: durum sekmeleri (TÜMÜ / YENİ / ★ KUYRUK / BAŞVURULDU / ELENEN), kaynak, min skor, **sadece remote**, sıralama, arama.
