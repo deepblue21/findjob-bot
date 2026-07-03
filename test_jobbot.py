@@ -109,6 +109,24 @@ def test_filter_engine():
     check("is_remote_job yerinde False", not FE.is_remote_job(Job("t","c","İzmir","u","s")))
     check("work_mode_allowed uzaktan", FE.work_mode_allowed(Job("QA","c","Uzaktan","u","s", is_remote=True), ["uzaktan"]))
     check("work_mode_allowed yerinde eler", not FE.work_mode_allowed(Job("QA","c","İzmir","u","s"), ["uzaktan"]))
+    closed = Job(
+        "QA Test Mühendisi",
+        "Acme",
+        "İzmir",
+        "u",
+        "linkedin",
+        description="No longer accepting applications. Selenium deneyimi aranıyor.",
+    )
+    check("kapalı başvuru uyarısı yakalanır", FE.has_inactive_application_warning(closed))
+    active = Job(
+        "QA Test Mühendisi",
+        "Acme",
+        "İzmir",
+        "u2",
+        "indeed",
+        description="Başvuru için Selenium deneyimi aranıyor.",
+    )
+    check("aktif başvuru yanlış elenmez", not FE.has_inactive_application_warning(active))
 
 
 def test_db():
@@ -198,6 +216,7 @@ def test_dashboard_ui_contract():
     check("kaynak sagligi uyarisi var", 'id="sourceHealthNote"' in html and "function renderSourceHealthNote()" in html)
     check("auto apply lite UI var", 'id="autoApplyPanel"' in html and "function loadApplyQueue()" in html)
     check("başvuru planı UI var", 'id="appPlan"' in html and "function renderApplyPlan(" in html)
+    check("kapalı başvuru gizleme bilgisi var", "CLOSED_HIDDEN_COUNT" in html and "kapalı başvuru gizlendi" in html)
     check("siyah terminal tema var", 'id:"black"' in html and 'data-theme="black"' in html and "#c6f035" in html and "#4fe0c5" in html)
 
 
@@ -284,6 +303,7 @@ def test_scanner_pipeline():
         Job("QA Test Mühendisi","Acme","İzmir, Türkiye","u1","indeed",description="selenium"),     # TUT
         Job("Test Mühendisi","Beta","İstanbul","u2","indeed",description=""),                        # AT (İstanbul yerinde)
         Job("Yazılım Test Uzmanı","Gamma","Uzaktan","u3","kariyer.net",description="uzaktan"),       # TUT (remote, arama terimi)
+        Job("QA Test Mühendisi","ClosedCo","İzmir","u_closed","linkedin",description="No longer accepting applications. selenium"),  # AT (başvuru kapalı)
         Job("Garson","Cafe","İzmir","u4","indeed",description=""),                                    # AT (rol uygun değil)
     ]
     o = (SC.scrape_jobspy, SC.scrape_kariyer, SC.scrape_rss_feeds, SC.notify_jobs, SC.notify_summary)
@@ -303,6 +323,7 @@ def test_scanner_pipeline():
         check("İzmir QA tutuldu", "QA Test Mühendisi" in titles)
         check("İstanbul yerinde elendi", "Test Mühendisi" not in titles)
         check("uzaktan tutuldu", "Yazılım Test Uzmanı" in titles)
+        check("başvuru kapalı ilan elendi", "ClosedCo" not in [r["company"] for r in DB.get_jobs(profile=TEST_KEY)])
         check("alakasız (Garson) elendi", "Garson" not in titles)
         check("bildirim uygunluk terimleri taşıyor", any("selenium" in (j.match_terms or []) for j in notified_jobs))
         check("özet rapor gönderildi", any(s[0]=="summary" for s in sent))
@@ -468,6 +489,16 @@ def test_web_api():
     p = tempfile.mktemp(suffix=".db")
     DB.configure(p)
     DB.upsert_job(Job("QA Test","A","İzmir","https://x/1","indeed",score=8,is_remote=True), TEST_KEY)
+    DB.upsert_job(Job(
+        "QA Closed",
+        "ClosedCo",
+        "İzmir",
+        "https://x/closed",
+        "company",
+        description="No longer accepting applications. qa selenium cv@closed.test",
+        score=9,
+        is_remote=True,
+    ), TEST_KEY)
     DB.set_source_health("kariyer.net", "blocked", "403")
     from web.app import app
     cfg = uvicorn.Config(app, host="127.0.0.1", port=8809, log_level="error")
@@ -480,9 +511,11 @@ def test_web_api():
     try:
         check("/ 200", op.open("http://127.0.0.1:8809/", timeout=6).status==200)
         check("/api/profiles", len(g("/api/profiles")["profiles"])>=1)
-        check("/api/stats total", g("/api/stats?profile="+TEST_KEY)["total"]==1)
+        check("/api/stats total", g("/api/stats?profile="+TEST_KEY)["total"]==2)
         jb = g("/api/jobs?profile="+TEST_KEY)
         check("/api/jobs count", jb["count"]==1)
+        check("/api/jobs hidden_count", jb.get("hidden_count")==1)
+        check("/api/jobs kapalı ilan göstermez", all(j["company"]!="ClosedCo" for j in jb["jobs"]))
         check("/api/jobs remote", g("/api/jobs?profile="+TEST_KEY+"&remote_only=true")["count"]==1)
         check("/api/jobs arama", g("/api/jobs?profile="+TEST_KEY+"&search=qa")["count"]==1)
         h = jb["jobs"][0]["url_hash"]
@@ -493,6 +526,8 @@ def test_web_api():
         check("/api/source-health", any(x["source"]=="kariyer.net" and x["status"]=="blocked" for x in sh))
         aq = g("/api/apply/queue?profile="+TEST_KEY)
         check("/api/apply/queue", "items" in aq and "ready_count" in aq)
+        check("/api/apply/queue hidden_count", aq.get("hidden_count")==1)
+        check("/api/apply/queue kapalı ilan göstermez", all((x.get("job") or {}).get("company")!="ClosedCo" for x in aq["items"]))
     finally:
         srv.should_exit = True; os.unlink(p)
 

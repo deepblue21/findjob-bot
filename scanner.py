@@ -218,7 +218,8 @@ def _scan_one_profile(
                 _tmp.score = score_job(_tmp, scoring)
                 rel = relevance_score(_tmp, role_weights)
                 if (
-                    _tmp.score < min_store
+                    should_exclude(_tmp, exclude_kw)
+                    or _tmp.score < min_store
                     or rel < min_rel
                     or not work_mode_allowed(_tmp, allowed_work_modes)
                     or not location_allowed(jr.get("location", ""), cities, jr.get("is_remote"))

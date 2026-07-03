@@ -20,6 +20,7 @@ import profiles as profiles_mod
 from cities import TURKISH_CITIES
 from cover_letter import generate_application
 from apply_lite import apply_policy, build_apply_plan
+from filter_engine import has_inactive_application_warning
 from resume_analyzer import analyze_resume_pdf
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,17 @@ def api_filter_options():
     return {"cities": TURKISH_CITIES}
 
 
+def _split_visible_jobs(jobs: list[dict]) -> tuple[list[dict], int]:
+    visible = []
+    hidden_count = 0
+    for job in jobs:
+        if has_inactive_application_warning(job):
+            hidden_count += 1
+        else:
+            visible.append(job)
+    return visible, hidden_count
+
+
 @app.get("/api/stats")
 def api_stats(profile: str = Query("all")):
     return db.get_stats(profile=profile)
@@ -153,7 +165,8 @@ def api_jobs(
         remote_only=remote_only, city=city, work_mode=work_mode, days=days,
         search=search or None, sort=sort, limit=limit, offset=offset,
     )
-    return {"jobs": jobs, "count": len(jobs)}
+    jobs, hidden_count = _split_visible_jobs(jobs)
+    return {"jobs": jobs, "count": len(jobs), "hidden_count": hidden_count}
 
 
 def _safe_segment(value: str, default: str = "general") -> str:
@@ -280,7 +293,11 @@ def api_apply_queue(profile: str = Query(""), limit: int = Query(8)):
     )
     items = []
     ready_count = 0
+    hidden_count = 0
     for job in jobs:
+        if has_inactive_application_warning(job):
+            hidden_count += 1
+            continue
         if job.get("status") in {"applied", "dismissed"}:
             continue
         application = generate_application(job, prof)
@@ -310,6 +327,7 @@ def api_apply_queue(profile: str = Query(""), limit: int = Query(8)):
         "daily_limit": daily_limit,
         "count": len(items),
         "ready_count": ready_count,
+        "hidden_count": hidden_count,
         "items": items[:daily_limit],
     }
 

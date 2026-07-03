@@ -1,3 +1,5 @@
+import unicodedata
+
 from cities import TURKISH_CITIES, city_variants
 from models import Job
 
@@ -21,6 +23,62 @@ def city_norm(s: str) -> str:
     return tr_norm(s).translate(_TR_ASCII)
 
 
+def _fold_warning_text(s: str) -> str:
+    text = city_norm(s)
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return " ".join(text.split())
+
+
+_INACTIVE_APPLICATION_WARNING_PHRASES = tuple(
+    _fold_warning_text(p)
+    for p in (
+        "no longer accepting applications",
+        "no longer accepting applicants",
+        "not accepting applications",
+        "this job is no longer available",
+        "this position is no longer available",
+        "the job has expired",
+        "job has expired",
+        "position has been filled",
+        "application period has ended",
+        "artik basvuru kabul edilmiyor",
+        "artik basvuru almiyor",
+        "artik ilana basvuru yok",
+        "artik bu ilana basvuru yok",
+        "bu ilana artik basvuru yok",
+        "bu ilana artik basvuru yapilamiyor",
+        "bu ilana artik basvuru yapilamamaktadir",
+        "basvuruya kapali",
+        "basvuru kabul edilmiyor",
+        "basvuru alinmamaktadir",
+        "basvuru suresi doldu",
+        "ilan yayindan kaldirildi",
+        "ilan yayindan kaldirilmistir",
+    )
+)
+
+
+def _job_field(job, key: str) -> str:
+    if isinstance(job, dict):
+        return str(job.get(key) or "")
+    return str(getattr(job, key, "") or "")
+
+
+def has_inactive_application_warning(job) -> bool:
+    """Kaynak metin, ilanın artık başvuru almadığını söylüyorsa True döndür."""
+    text = _fold_warning_text(
+        " ".join(
+            [
+                _job_field(job, "title"),
+                _job_field(job, "company"),
+                _job_field(job, "description"),
+            ]
+        )
+    )
+    return any(phrase and phrase in text for phrase in _INACTIVE_APPLICATION_WARNING_PHRASES)
+
+
 def score_job(job: Job, scoring_weights: dict) -> float:
     """İlan başlığı + açıklaması + konumuna göre puan (Türkçe-güvenli)."""
     text = tr_norm(" ".join([job.title or "", job.description or "", job.location or ""]))
@@ -36,6 +94,8 @@ def score_job(job: Job, scoring_weights: dict) -> float:
 
 
 def should_exclude(job: Job, exclude_keywords: list) -> bool:
+    if has_inactive_application_warning(job):
+        return True
     text = tr_norm(" ".join([job.title or "", job.description or ""]))
     return any(tr_norm(str(kw)) in text for kw in exclude_keywords)
 
