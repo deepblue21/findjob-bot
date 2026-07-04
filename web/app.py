@@ -274,6 +274,12 @@ def api_update_status(url_hash: str, status: str = Query(...),
     return {"ok": True, "url_hash": url_hash, "status": status}
 
 
+@app.post("/api/jobs/cleanup-inactive")
+def api_cleanup_inactive_jobs(profile: str = Query("all")):
+    cleaned = db.cleanup_inactive_application_jobs(profile=profile)
+    return {"ok": True, "cleaned": cleaned}
+
+
 @app.patch("/api/jobs/{url_hash}/tracker")
 def api_update_tracker(url_hash: str, payload: TrackerUpdate,
                        profile: str = Query("")):

@@ -7,6 +7,7 @@ import sqlite3
 from pathlib import Path
 from contextlib import contextmanager
 from cities import city_variants
+from filter_engine import has_inactive_application_warning
 from models import Job
 
 _DB_PATH: Path | None = None
@@ -281,6 +282,28 @@ def update_tracker(url_hash: str, profile: str = "", *, status: str | None = Non
     with get_conn() as conn:
         conn.execute(f"UPDATE jobs SET {', '.join(fields)} WHERE {where}", params)
     return get_job(url_hash, profile=profile)
+
+
+def cleanup_inactive_application_jobs(profile: str = "") -> int:
+    """Artık başvuru kabul etmeyen ilanları veritabanından kaldır."""
+    where = ""
+    params: list = []
+    if profile and profile != "all":
+        where = " WHERE profile = ?"
+        params.append(profile)
+    with get_conn() as conn:
+        rows = [dict(r) for r in conn.execute(f"SELECT * FROM jobs{where}", params).fetchall()]
+        targets = [
+            (row["url_hash"], row.get("profile", ""))
+            for row in rows
+            if has_inactive_application_warning(row)
+        ]
+        if targets:
+            conn.executemany(
+                "DELETE FROM jobs WHERE url_hash = ? AND profile = ?",
+                targets,
+            )
+        return len(targets)
 
 
 def get_stats(profile=None) -> dict:

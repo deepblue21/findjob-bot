@@ -76,6 +76,8 @@ def test_filter_and_status_contract(src: str) -> None:
         ("function saveTracker(", "takipçi kaydetme fonksiyonu"),
         ("/api/tracker/export", "takipçi CSV export bağlantısı"),
         ('data-status="interview"', "görüşme durum sekmesi"),
+        ("function cleanupInactiveJobs(", "kapalı ilan temizleme fonksiyonu"),
+        ("/api/jobs/cleanup-inactive", "kapalı ilan temizleme API bağlantısı"),
         ("function loadSourceHealth()", "kaynak sagligi yukleme fonksiyonu"),
         ("/api/source-health", "kaynak sagligi API baglantisi"),
         (".src-chip.blocked", "kaynak engelli durum stili"),

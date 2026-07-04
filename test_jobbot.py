@@ -153,6 +153,9 @@ def test_db():
     st = DB.get_stats("a")
     check("get_stats total", st["total"]==1)
     check("get_stats interview", st["interview"]==1 and st["by_status"]["interview"]==1)
+    DB.upsert_job(Job("QA Closed","Closed","İzmir","https://x/closed","linkedin",description="No longer accepting applications",score=8), "a")
+    check("kapalı ilan temizleme sayısı", DB.cleanup_inactive_application_jobs("a")==1)
+    check("kapalı ilan DB'den silindi", all(r["company"]!="Closed" for r in DB.get_jobs(profile="a", min_score=0)))
     DB.set_source_health("kariyer.net", "blocked", "403")
     health = {x["source"]: x for x in DB.get_source_health()}
     check("source health varsayilan jobspy", health["jobspy"]["status"]=="unknown")
@@ -225,6 +228,7 @@ def test_dashboard_ui_contract():
     check("takipçi kaydetme fonksiyonu var", "function saveTracker(" in html and "/tracker" in html)
     check("takipçi export var", "/api/tracker/export" in html and "CSV" in html)
     check("takipçi durum sekmeleri var", 'data-status="screening"' in html and 'data-status="interview"' in html and 'data-status="offer"' in html and 'data-status="rejected"' in html)
+    check("kapalı ilan temizleme UI var", "function cleanupInactiveJobs(" in html and "/api/jobs/cleanup-inactive" in html and "Kapalıları temizle" in html)
     check("siyah terminal tema var", 'id:"black"' in html and 'data-theme="black"' in html and "#c6f035" in html and "#4fe0c5" in html)
 
 
@@ -547,6 +551,9 @@ def test_web_api():
         check("/api/apply/queue", "items" in aq and "ready_count" in aq)
         check("/api/apply/queue hidden_count", aq.get("hidden_count")==1)
         check("/api/apply/queue kapalı ilan göstermez", all((x.get("job") or {}).get("company")!="ClosedCo" for x in aq["items"]))
+        cleaned = post("/api/jobs/cleanup-inactive?profile="+TEST_KEY)
+        check("/api/jobs cleanup inactive", cleaned.get("ok") is True and cleaned.get("cleaned")==1)
+        check("/api/jobs cleanup sonrası hidden 0", g("/api/jobs?profile="+TEST_KEY).get("hidden_count")==0)
     finally:
         srv.should_exit = True; os.unlink(p)
 

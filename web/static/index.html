@@ -289,6 +289,8 @@
   .filter-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;background:var(--brand-soft);color:var(--brand);font-size:11.5px;font-weight:700;border:1px solid transparent}
   .clear-filters{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);color:var(--muted);font-size:11.5px;font-weight:700}
   .clear-filters:hover{color:var(--rose);border-color:var(--rose)}
+  .hidden-clean{margin-left:7px;padding:4px 8px;border-radius:999px;background:var(--amber-soft);border:1px solid rgba(217,119,6,.24);color:var(--amber);font-size:11px;font-weight:800}
+  .hidden-clean:hover{background:var(--amber);color:#fff}
 
   /* Hızlı filtreler */
   .quickbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
@@ -921,11 +923,19 @@ function quickPredicate(j){
 }
 function applyQuickAndRender(){
   VIEW_JOBS=CLIENT_JOBS.filter(quickPredicate);
-  const hiddenNote=CLOSED_HIDDEN_COUNT>0?` · ${CLOSED_HIDDEN_COUNT} kapalı başvuru gizlendi`:"";
-  document.getElementById("resultCount").textContent=`${VIEW_JOBS.length} ilan${hiddenNote}`;
+  const hiddenNote=CLOSED_HIDDEN_COUNT>0?` · ${CLOSED_HIDDEN_COUNT} kapalı başvuru gizlendi <button class="hidden-clean" onclick="cleanupInactiveJobs()">Kapalıları temizle</button>`:"";
+  document.getElementById("resultCount").innerHTML=`${VIEW_JOBS.length} ilan${hiddenNote}`;
   renderFocusbar();
   renderFilterSummary();
   renderList(VIEW_JOBS);
+}
+async function cleanupInactiveJobs(){
+  if(!CLOSED_HIDDEN_COUNT) return;
+  const r=await fetch(`${API}/api/jobs/cleanup-inactive?profile=${encodeURIComponent(state.profile||"all")}`,{method:"POST"});
+  if(!r.ok){ toast("Kapalı ilanlar temizlenemedi",false); return; }
+  const data=await r.json();
+  toast(`${data.cleaned||0} kapalı ilan temizlendi`);
+  await loadApplyQueue(); await loadStats(); await loadJobs();
 }
 function renderFocusbar(){
   const box=document.getElementById("focusbar");
