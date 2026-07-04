@@ -1,6 +1,8 @@
 """FastAPI web uygulaması — çok profilli dashboard + JSON API."""
 import base64
+import csv
 from contextlib import asynccontextmanager
+import io
 import logging
 import os
 import re
@@ -13,6 +15,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 import db
 import scanner
@@ -29,6 +32,12 @@ STATIC_DIR = Path(__file__).parent / "static"
 UPLOAD_ROOT = Path(__file__).resolve().parents[1] / "uploads" / "resumes"
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 AUTH_REALM = "JobBot"
+
+
+class TrackerUpdate(BaseModel):
+    status: str | None = None
+    follow_up_at: str | None = None
+    note: str | None = None
 
 
 @asynccontextmanager
@@ -259,10 +268,57 @@ def api_delete_upload(stored_name: str, profile: str = Query("")):
 @app.post("/api/jobs/{url_hash}/status")
 def api_update_status(url_hash: str, status: str = Query(...),
                       profile: str = Query("")):
-    if status not in ("new", "saved", "applied", "dismissed"):
+    if status not in db.TRACKER_STATUSES:
         return JSONResponse({"error": "geçersiz durum"}, status_code=400)
     db.update_status(url_hash, status, profile=profile)
     return {"ok": True, "url_hash": url_hash, "status": status}
+
+
+@app.patch("/api/jobs/{url_hash}/tracker")
+def api_update_tracker(url_hash: str, payload: TrackerUpdate,
+                       profile: str = Query("")):
+    if not db.get_job(url_hash, profile=profile):
+        return JSONResponse({"error": "ilan bulunamadı"}, status_code=404)
+    if payload.status is not None and payload.status not in db.TRACKER_STATUSES:
+        return JSONResponse({"error": "geçersiz durum"}, status_code=400)
+    follow_up = payload.follow_up_at
+    if follow_up:
+        try:
+            datetime.fromisoformat(follow_up.replace("Z", "+00:00"))
+        except ValueError:
+            return JSONResponse({"error": "geçersiz takip tarihi"}, status_code=400)
+    if payload.note is not None and len(payload.note) > 2000:
+        return JSONResponse({"error": "not en fazla 2000 karakter olabilir"}, status_code=400)
+    item = db.update_tracker(
+        url_hash,
+        profile=profile,
+        status=payload.status,
+        follow_up_at=payload.follow_up_at,
+        note=payload.note,
+    )
+    return {"ok": True, "job": item}
+
+
+@app.get("/api/tracker/export")
+def api_tracker_export(profile: str = Query("all"), format: str = Query("csv")):
+    jobs = db.get_jobs(profile=profile, sort="date", limit=10000)
+    fields = [
+        "title", "company", "location", "url", "source", "score", "status",
+        "found_at", "posted_at", "applied_at", "follow_up_at", "last_action_at",
+        "tracker_note", "description",
+    ]
+    if format.lower() == "json":
+        return JSONResponse({"jobs": jobs, "count": len(jobs)})
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(jobs)
+    filename = f"jobbot-{_safe_segment(profile, 'all')}-tracker.csv"
+    return PlainTextResponse(
+        "\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/jobs/{url_hash}/application")

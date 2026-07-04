@@ -336,6 +336,9 @@
   .act.open:hover{color:var(--brand);border-color:var(--brand)}
   .act.active-save{color:var(--violet);border-color:var(--violet);background:var(--violet-soft)}
   .act.active-apply{color:var(--blue);border-color:var(--blue);background:var(--blue-soft)}
+  .badge.status{background:var(--blue-soft);color:var(--blue)}
+  .badge.status.interview,.badge.status.offer{background:var(--green-soft);color:var(--green)}
+  .badge.status.rejected,.badge.status.dismissed{background:var(--rose-soft);color:var(--rose)}
 
   .empty{text-align:center;padding:72px 20px;color:var(--muted)}
   .empty .big{font-size:42px;margin-bottom:12px;opacity:.5}
@@ -392,6 +395,16 @@
   .dbadges{display:flex;flex-wrap:wrap;gap:7px}
   .kw{font-size:11.5px;font-weight:600;padding:4px 11px;border-radius:20px;background:var(--green-soft);color:var(--green);border:1px solid #bfe6cc}
   .ddesc{font-size:13px;color:var(--text-2);line-height:1.65;white-space:pre-wrap;max-height:230px;overflow-y:auto;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:13px}
+  .tracker-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:9px}
+  .tracker-field{display:flex;flex-direction:column;gap:5px}
+  .tracker-field span{font-size:10.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted-2);font-weight:800}
+  .tracker-field select,.tracker-field input,.tracker-note{width:100%;border:1px solid var(--border-strong);border-radius:10px;background:var(--surface-2);color:var(--text);font-family:inherit;font-size:12.5px;padding:9px 10px;outline:none}
+  .tracker-note{min-height:76px;resize:vertical;line-height:1.5;margin-bottom:9px}
+  .tracker-field select:focus,.tracker-field input:focus,.tracker-note:focus{border-color:var(--brand);box-shadow:var(--ring)}
+  .tracker-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .tracker-meta{font-size:11.5px;color:var(--muted)}
+  .tracker-save{padding:9px 12px;border-radius:10px;background:var(--brand-soft);color:var(--brand);font-size:12px;font-weight:800;white-space:nowrap}
+  .tracker-save:hover{background:var(--brand);color:#fff}
   .drawer-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px;background:var(--surface-2)}
   .dbtn{flex:1;min-width:110px;font-weight:700;font-size:12.5px;padding:11px 12px;border-radius:10px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text-2);display:flex;align-items:center;justify-content:center;gap:6px}
   .dbtn:hover{border-color:var(--brand);color:var(--brand)}
@@ -528,6 +541,10 @@
       <button class="tab" data-status="new">Yeni <span class="tab-count" id="tab-new-count">0</span></button>
       <button class="tab" data-status="saved">★ Kuyruk <span class="tab-count" id="tab-saved-count">0</span></button>
       <button class="tab" data-status="applied">Başvuruldu <span class="tab-count" id="tab-applied-count">0</span></button>
+      <button class="tab" data-status="screening">İnceleme <span class="tab-count" id="tab-screening-count">0</span></button>
+      <button class="tab" data-status="interview">Görüşme <span class="tab-count" id="tab-interview-count">0</span></button>
+      <button class="tab" data-status="offer">Teklif <span class="tab-count" id="tab-offer-count">0</span></button>
+      <button class="tab" data-status="rejected">Red <span class="tab-count" id="tab-rejected-count">0</span></button>
       <button class="tab" data-status="dismissed">Elenen <span class="tab-count" id="tab-dismissed-count">0</span></button>
     </div>
     <div class="ctrl"><span>kaynak</span>
@@ -564,6 +581,7 @@
         <option value="company">şirkete göre</option>
       </select>
     </div>
+    <button class="clear-filters" onclick="exportTracker()">CSV indir</button>
     <div class="search-wrap">
       <input type="text" id="searchBox" placeholder="başlık / şirket ara…  ( / )" oninput="debouncedLoad()">
       <button class="clear-search" id="clearSearchBtn" onclick="clearSearch()" title="Aramayı temizle" aria-label="Aramayı temizle">✕</button>
@@ -593,6 +611,25 @@
   <div class="drawer-body">
     <div class="dsec"><h4>Etiketler</h4><div class="dbadges" id="dBadges"></div></div>
     <div class="dsec" id="dWhySec"><h4>Neden eşleşti</h4><div class="dbadges" id="dWhy"></div></div>
+    <div class="dsec"><h4>Başvuru Takibi</h4>
+      <div class="tracker-grid">
+        <label class="tracker-field"><span>Aşama</span>
+          <select id="trackerStatus">
+            <option value="new">Yeni</option>
+            <option value="saved">Kuyruk</option>
+            <option value="applied">Başvuruldu</option>
+            <option value="screening">İnceleme</option>
+            <option value="interview">Görüşme</option>
+            <option value="offer">Teklif</option>
+            <option value="rejected">Red</option>
+            <option value="dismissed">Elenen</option>
+          </select>
+        </label>
+        <label class="tracker-field"><span>Takip tarihi</span><input type="date" id="trackerFollowUp"></label>
+      </div>
+      <textarea class="tracker-note" id="trackerNote" placeholder="Not ekle..."></textarea>
+      <div class="tracker-row"><span class="tracker-meta" id="trackerMeta"></span><button class="tracker-save" onclick="saveTracker()">Takibi kaydet</button></div>
+    </div>
     <div class="dsec"><h4>Açıklama</h4><div class="ddesc" id="dDesc">—</div></div>
   </div>
   <div class="drawer-foot" id="drawerFoot"></div>
@@ -627,6 +664,7 @@ let scanTimer = null, PROFILES = [], CLIENT_JOBS = [], VIEW_JOBS = [], CUR_KEYWO
 let FILTER_CITIES = [];
 let SOURCE_HEALTH = {};
 let QUICK = "all", SEL = -1;
+let CURRENT_JOB_HASH = "";
 let LAST_STATUS = null, toastTimer = null;
 
 // ── tema ──
@@ -658,7 +696,8 @@ function animateNum(el,to){ to=+to||0; const from=+el.textContent||0; if(from===
 function workMode(j){ const loc=(j.location||'').toLowerCase(); if(j.is_remote||loc.includes('uzaktan')||loc.includes('remote')) return 'uzaktan'; if(loc.includes('hibrit')||loc.includes('hybrid')) return 'hibrit'; return 'yerinde'; }
 function timeAgo(s){ if(!s) return ''; const d=new Date((s||'').replace(' ','T')); if(isNaN(d)) return ''; const m=Math.floor((Date.now()-d.getTime())/60000); if(m<1) return 'az önce'; if(m<60) return m+' dk önce'; const h=Math.floor(m/60); if(h<24) return h+' saat önce'; return Math.floor(h/24)+' gün önce'; }
 function isToday(s){ if(!s) return false; return String(s).slice(0,10)===new Date().toLocaleDateString('en-CA'); }
-function statusLabel(status){ return ({all:"Tümü",new:"Yeni",saved:"Kuyruk",applied:"Başvuruldu",dismissed:"Elenen"}[status]||status); }
+const STATUS_LABELS={all:"Tümü",new:"Yeni",saved:"Kuyruk",applied:"Başvuruldu",screening:"İnceleme",interview:"Görüşme",offer:"Teklif",rejected:"Red",dismissed:"Elenen"};
+function statusLabel(status){ return STATUS_LABELS[status]||status; }
 function quickLabel(id){
   if(id==="all") return "";
   if(id==="hi") return "Yüksek skor";
@@ -838,7 +877,7 @@ async function deleteUpload(stored){
 
 // ── stats ──
 function renderTabCounts(s){
-  const counts={all:s.total||0,new:s.new||0,saved:s.saved||0,applied:s.applied||0,dismissed:s.dismissed||0};
+  const counts={all:s.total||0,new:s.new||0,saved:s.saved||0,applied:s.applied||0,screening:s.screening||0,interview:s.interview||0,offer:s.offer||0,rejected:s.rejected||0,dismissed:s.dismissed||0};
   Object.entries(counts).forEach(([k,v])=>{ const el=document.getElementById(`tab-${k}-count`); if(el) el.textContent=v; });
 }
 async function loadStats(){
@@ -856,6 +895,9 @@ async function loadStats(){
   Object.entries(s.by_source||{}).forEach(([src,c])=>{ const o=document.createElement("option"); o.value=src; o.textContent=`${src} (${c})`; sel.appendChild(o); });
   sel.value=[...sel.options].some(o=>o.value===cur)?cur:"all";
   if(s.last_scan){ const ls=s.last_scan; const w=ls.finished_at||ls.started_at||"—"; document.getElementById("scanMeta").innerHTML=`son tarama: <b>${w.split(' ')[1]||w}</b> · ${ls.new_count||0} yeni · ${ls.matched_count||0} bildirim`; }
+}
+function exportTracker(){
+  window.location.href=`${API}/api/tracker/export?profile=${encodeURIComponent(state.profile||"all")}`;
 }
 
 // ── jobs ──
@@ -930,7 +972,8 @@ function renderList(jobs){
   if(!jobs.length){ list.innerHTML=`<div class="empty"><div class="big">🔍</div><div class="mono">Eşleşen ilan yok</div><div class="mono" style="margin-top:6px;opacity:.7">"Şimdi Tara" ile tarama başlat veya filtreleri gevşet</div></div>`; return; }
   list.innerHTML=jobs.map((j,idx)=>{
     const sal=fmtSalary(j), sc=scoreClass(j.score), mode=workMode(j), ago=timeAgo(j.found_at);
-    const badges=[ j.status==='new'?`<span class="badge yeni">yeni</span>`:'', `<span class="badge src">${esc(j.source)}</span>`, `<span class="badge mode ${mode}">${mode}</span>`, j.job_type?`<span class="badge type">${esc(j.job_type)}</span>`:'', sal?`<span class="badge salary">${esc(sal)}</span>`:'', ago?`<span class="job-time">${ago}</span>`:'' ].filter(Boolean).join('');
+    const statusBadge=j.status==='new'?`<span class="badge yeni">yeni</span>`:(j.status&&j.status!=='all'?`<span class="badge status ${esc(j.status)}">${esc(statusLabel(j.status))}</span>`:'');
+    const badges=[ statusBadge, `<span class="badge src">${esc(j.source)}</span>`, `<span class="badge mode ${mode}">${mode}</span>`, j.job_type?`<span class="badge type">${esc(j.job_type)}</span>`:'', sal?`<span class="badge salary">${esc(sal)}</span>`:'', ago?`<span class="job-time">${ago}</span>`:'' ].filter(Boolean).join('');
     return `<div class="job ${sc} ${j.status==='dismissed'?'dismissed':''} ${idx===SEL?'sel':''}" data-h="${j.url_hash}" data-i="${idx}" onclick="cardClick(event,${idx})">
       <div class="score ${sc}">${j.score.toFixed(1)}<small>SKOR</small></div>
       <div class="job-main"><a href="${esc(j.url)}" target="_blank" class="job-title" onclick="event.stopPropagation()">${esc(j.title)||'(başlıksız)'}</a>
@@ -978,9 +1021,8 @@ function renderInsights(){
 async function setStatus(hash, status){
   const prev=(CLIENT_JOBS.find(j=>j.url_hash===hash)||VIEW_JOBS.find(j=>j.url_hash===hash)||{}).status||"new";
   await fetch(`${API}/api/jobs/${hash}/status?status=${status}&profile=${encodeURIComponent(state.profile)}`,{method:"POST"});
-  const labels={saved:"kuyruğa eklendi",applied:"başvuruldu",dismissed:"elendi",new:"yeni"};
   LAST_STATUS={hash, status:prev, profile:state.profile};
-  toast(`İlan → ${labels[status]}`, true, {label:"Geri al", fn:"undoStatus()"});
+  toast(`İlan → ${statusLabel(status)}`, true, {label:"Geri al", fn:"undoStatus()"});
   if(document.getElementById("drawer").classList.contains("show")) closeDrawer();
   await loadApplyQueue(); await loadStats(); await loadJobs();
 }
@@ -1000,6 +1042,7 @@ function whyMatched(j){
 }
 function openDrawer(idx){
   const j=VIEW_JOBS[idx]; if(!j) return; SEL=idx;
+  CURRENT_JOB_HASH=j.url_hash;
   document.querySelectorAll('.job').forEach(c=>c.classList.toggle('sel', +c.dataset.i===idx));
   const sc=scoreClass(j.score);
   document.getElementById("dScore").innerHTML=`⭐ ${j.score.toFixed(1)} skor`;
@@ -1012,6 +1055,11 @@ function openDrawer(idx){
   const why=whyMatched(j);
   document.getElementById("dWhySec").style.display=why.length?'block':'none';
   document.getElementById("dWhy").innerHTML=why.map(k=>`<span class="kw">${esc(k)}</span>`).join('');
+  document.getElementById("trackerStatus").value=j.status||"new";
+  document.getElementById("trackerFollowUp").value=(j.follow_up_at||"").slice(0,10);
+  document.getElementById("trackerNote").value=j.tracker_note||"";
+  const meta=[j.applied_at?`başvuru: ${j.applied_at}`:"",j.last_action_at?`son işlem: ${j.last_action_at}`:""].filter(Boolean).join(" · ");
+  document.getElementById("trackerMeta").textContent=meta;
   document.getElementById("dDesc").textContent=(j.description&&j.description.trim())?j.description:"(bu kaynakta açıklama yok — ilana giderek tüm detayı görebilirsin)";
   document.getElementById("drawerFoot").innerHTML=`
     <button class="dbtn primary" onclick="openApp('${j.url_hash}')">📝 Ön yazı</button>
@@ -1023,6 +1071,23 @@ function openDrawer(idx){
   document.getElementById("drawer").classList.add("show");
 }
 function closeDrawer(){ document.getElementById("drawer").classList.remove("show"); document.getElementById("drawerBg").classList.remove("show"); }
+async function saveTracker(){
+  if(!CURRENT_JOB_HASH) return;
+  const payload={
+    status:document.getElementById("trackerStatus").value,
+    follow_up_at:document.getElementById("trackerFollowUp").value,
+    note:document.getElementById("trackerNote").value
+  };
+  const r=await fetch(`${API}/api/jobs/${CURRENT_JOB_HASH}/tracker?profile=${encodeURIComponent(state.profile)}`,{
+    method:"PATCH",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(payload)
+  });
+  if(!r.ok){ toast("Takip kaydedilemedi",false); return; }
+  toast("Takip kaydedildi");
+  closeDrawer();
+  await loadApplyQueue(); await loadStats(); await loadJobs();
+}
 
 // ── ön yazı modalı ──
 async function openApp(hash){

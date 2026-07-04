@@ -146,9 +146,13 @@ def test_db():
     h = DB.get_jobs(profile="a")[0]["url_hash"]
     DB.update_status(h, "saved", "a")
     check("update_status", DB.get_jobs(profile="a", status="saved")[0]["url_hash"]==h)
+    tracked = DB.update_tracker(h, "a", status="interview", follow_up_at="2026-07-08", note="İK görüşmesi bekleniyor")
+    check("update_tracker durum", tracked["status"]=="interview")
+    check("update_tracker takip tarihi", tracked["follow_up_at"]=="2026-07-08")
+    check("update_tracker not", tracked["tracker_note"]=="İK görüşmesi bekleniyor")
     st = DB.get_stats("a")
     check("get_stats total", st["total"]==1)
-    check("get_stats saved", st["saved"]==1)
+    check("get_stats interview", st["interview"]==1 and st["by_status"]["interview"]==1)
     DB.set_source_health("kariyer.net", "blocked", "403")
     health = {x["source"]: x for x in DB.get_source_health()}
     check("source health varsayilan jobspy", health["jobspy"]["status"]=="unknown")
@@ -217,6 +221,10 @@ def test_dashboard_ui_contract():
     check("auto apply lite UI var", 'id="autoApplyPanel"' in html and "function loadApplyQueue()" in html)
     check("başvuru planı UI var", 'id="appPlan"' in html and "function renderApplyPlan(" in html)
     check("kapalı başvuru gizleme bilgisi var", "CLOSED_HIDDEN_COUNT" in html and "kapalı başvuru gizlendi" in html)
+    check("takipçi UI var", 'id="trackerStatus"' in html and 'id="trackerFollowUp"' in html and 'id="trackerNote"' in html)
+    check("takipçi kaydetme fonksiyonu var", "function saveTracker(" in html and "/tracker" in html)
+    check("takipçi export var", "/api/tracker/export" in html and "CSV" in html)
+    check("takipçi durum sekmeleri var", 'data-status="screening"' in html and 'data-status="interview"' in html and 'data-status="offer"' in html and 'data-status="rejected"' in html)
     check("siyah terminal tema var", 'id:"black"' in html and 'data-theme="black"' in html and "#c6f035" in html and "#4fe0c5" in html)
 
 
@@ -508,6 +516,14 @@ def test_web_api():
     def g(path): return json.load(op.open("http://127.0.0.1:8809"+path, timeout=6))
     def post(path):
         return json.load(op.open(urllib.request.Request("http://127.0.0.1:8809"+path, method="POST"), timeout=6))
+    def patch(path, payload):
+        req = urllib.request.Request(
+            "http://127.0.0.1:8809"+path,
+            data=json.dumps(payload).encode("utf-8"),
+            method="PATCH",
+            headers={"Content-Type": "application/json"},
+        )
+        return json.load(op.open(req, timeout=6))
     try:
         check("/ 200", op.open("http://127.0.0.1:8809/", timeout=6).status==200)
         check("/api/profiles", len(g("/api/profiles")["profiles"])>=1)
@@ -521,6 +537,9 @@ def test_web_api():
         h = jb["jobs"][0]["url_hash"]
         check("/api/application", "cover_letter" in g(f"/api/jobs/{h}/application?profile="+TEST_KEY))
         check("/api/status ok", post(f"/api/jobs/{h}/status?status=saved&profile="+TEST_KEY).get("ok") is True)
+        tr = patch(f"/api/jobs/{h}/tracker?profile="+TEST_KEY, {"status":"interview","follow_up_at":"2026-07-08","note":"İK görüşmesi"})
+        check("/api/tracker patch", tr.get("ok") is True and tr["job"]["status"]=="interview" and tr["job"]["tracker_note"]=="İK görüşmesi")
+        check("/api/tracker export json", g("/api/tracker/export?profile="+TEST_KEY+"&format=json")["count"]==2)
         check("/api/scan/status", "running" in g("/api/scan/status"))
         sh = g("/api/source-health")["sources"]
         check("/api/source-health", any(x["source"]=="kariyer.net" and x["status"]=="blocked" for x in sh))

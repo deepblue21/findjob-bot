@@ -98,7 +98,7 @@ def build_apply_plan(
     candidate = (
         bool(policy.get("enabled", True))
         and score >= float(policy.get("min_score", 7.0))
-        and status not in {"applied", "dismissed"}
+        and status not in {"applied", "screening", "interview", "offer", "rejected", "dismissed"}
     )
 
     warnings: list[str] = []

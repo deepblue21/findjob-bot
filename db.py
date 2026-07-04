@@ -14,6 +14,10 @@ _SOURCE_HEALTH_DEFAULTS = {
     "jobspy": "JobSpy",
     "kariyer.net": "Kariyer.net",
 }
+TRACKER_STATUSES = (
+    "new", "saved", "applied", "screening", "interview",
+    "offer", "rejected", "dismissed",
+)
 
 
 def configure(db_path: str) -> None:
@@ -58,6 +62,11 @@ def init_db() -> None:
                 is_remote   INTEGER DEFAULT 0,
                 score       REAL DEFAULT 0,
                 status      TEXT DEFAULT 'new',
+                tracker_note TEXT DEFAULT '',
+                follow_up_at TEXT,
+                last_action_at TEXT,
+                status_changed_at TEXT DEFAULT (datetime('now','localtime')),
+                applied_at  TEXT,
                 notified    INTEGER DEFAULT 0,
                 found_at    TEXT DEFAULT (datetime('now','localtime')),
                 posted_at   TEXT,
@@ -92,6 +101,19 @@ def init_db() -> None:
         sl = [r["name"] for r in conn.execute("PRAGMA table_info(scan_log)").fetchall()]
         if sl and "profile" not in sl:
             conn.execute("ALTER TABLE scan_log ADD COLUMN profile TEXT DEFAULT ''")
+
+        # Akıllı Takipçi alanları: mevcut kullanıcı verisini silmeden şemayı büyüt.
+        job_cols = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+        tracker_columns = {
+            "tracker_note": "TEXT DEFAULT ''",
+            "follow_up_at": "TEXT",
+            "last_action_at": "TEXT",
+            "status_changed_at": "TEXT",
+            "applied_at": "TEXT",
+        }
+        for name, column_type in tracker_columns.items():
+            if name not in job_cols:
+                conn.execute(f"ALTER TABLE jobs ADD COLUMN {name} {column_type}")
 
 
 # -- İş kaydı işlemleri ---------------------------------------------------------
@@ -209,16 +231,56 @@ def delete_job(url_hash: str, profile: str = "") -> None:
 
 
 def update_status(url_hash: str, status: str, profile: str = "") -> None:
+    applied_sql = ", applied_at = COALESCE(applied_at, datetime('now','localtime'))" if status == "applied" else ""
     with get_conn() as conn:
         if profile:
             conn.execute(
-                "UPDATE jobs SET status = ? WHERE url_hash = ? AND profile = ?",
+                "UPDATE jobs SET status = ?, "
+                "status_changed_at = datetime('now','localtime'), "
+                "last_action_at = datetime('now','localtime')"
+                f"{applied_sql} WHERE url_hash = ? AND profile = ?",
                 (status, url_hash, profile),
             )
         else:
             conn.execute(
-                "UPDATE jobs SET status = ? WHERE url_hash = ?", (status, url_hash)
+                "UPDATE jobs SET status = ?, "
+                "status_changed_at = datetime('now','localtime'), "
+                "last_action_at = datetime('now','localtime')"
+                f"{applied_sql} WHERE url_hash = ?", (status, url_hash)
             )
+
+
+def update_tracker(url_hash: str, profile: str = "", *, status: str | None = None,
+                   follow_up_at: str | None = None, note: str | None = None) -> dict | None:
+    """Başvuru aşaması, takip tarihi ve kullanıcı notunu tek işlemde güncelle."""
+    fields: list[str] = []
+    params: list = []
+    if status is not None:
+        fields.extend([
+            "status = ?",
+            "status_changed_at = datetime('now','localtime')",
+        ])
+        params.append(status)
+        if status == "applied":
+            fields.append("applied_at = COALESCE(applied_at, datetime('now','localtime'))")
+    if follow_up_at is not None:
+        fields.append("follow_up_at = ?")
+        params.append(follow_up_at.strip() or None)
+    if note is not None:
+        fields.append("tracker_note = ?")
+        params.append(note.strip()[:2000])
+    if not fields:
+        return get_job(url_hash, profile=profile)
+
+    fields.append("last_action_at = datetime('now','localtime')")
+    where = "url_hash = ?"
+    params.append(url_hash)
+    if profile:
+        where += " AND profile = ?"
+        params.append(profile)
+    with get_conn() as conn:
+        conn.execute(f"UPDATE jobs SET {', '.join(fields)} WHERE {where}", params)
+    return get_job(url_hash, profile=profile)
 
 
 def get_stats(profile=None) -> dict:
@@ -252,7 +314,12 @@ def get_stats(profile=None) -> dict:
             "new": by_status.get("new", 0),
             "saved": by_status.get("saved", 0),
             "applied": by_status.get("applied", 0),
+            "screening": by_status.get("screening", 0),
+            "interview": by_status.get("interview", 0),
+            "offer": by_status.get("offer", 0),
+            "rejected": by_status.get("rejected", 0),
             "dismissed": by_status.get("dismissed", 0),
+            "by_status": by_status,
             "by_source": {r["source"]: r["c"] for r in sources},
             "last_scan": dict(last_scan) if last_scan else None,
         }
